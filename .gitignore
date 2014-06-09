@@ -1,0 +1,16 @@
+M9X1*
+xt2_eco2n
+VESA_fault
+*.csv
+*.png
+*.out
+*.txt
+*.pyc
+*.sh
+*INCON
+*MESH
+*SAVE
+*.pdf
+*CO2TAB
+*CO2Properties_1_0.py
+*rho_visc
