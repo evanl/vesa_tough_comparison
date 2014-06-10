@@ -4,6 +4,197 @@ import matplotlib.pyplot as plt
 import matplotlib
 from mpl_toolkits.mplot3d import Axes3D
 import string
+
+def create_t2_input(sim_title, two_d = False, uniform = False,\
+        sleipner = False, hydro = False, hydro_directory = False,\
+        num_steps = 11, days_per_step = 365.25, \
+        edge_bc_type = 1, linear_rp = False,\
+        linear_cap = False, shale = True, tolerance = -7,\
+        type1_source = False, sat_frac = 0.8,\
+        write_mesh = True):
+    """ Creates a TOUGH2 injection simulation
+    """
+    print 'CREATING TOUGH2 INPUT FILE'
+    if two_d == True:
+        eleme = 'aH732'
+    else:
+        eleme = 'JH732'
+
+    if uniform == True:
+        eleme = 'yB212'
+        nx = 25
+        ny = 25
+        nz = 25
+        dx = 50
+        dy = 50
+        dz = 0.6
+    else:
+        e_cel, nx, ny, nz = re.read_eclipse()
+
+    print "Read time"
+    t_read = clock()
+    print t_read
+
+    output_day_list = []
+    for i in range(num_steps):
+        output_day_list.append(days_per_step * (i+1))
+
+    print "nx, ny, nz"
+    print nx, ny, nz
+
+    print 'Creating T2 input files for simulation: ' + sim_title
+    f = open(sim_title,'w')
+    f.write('*'+ sim_title +'*\n')
+
+    #input parameters
+    name = 'sands'
+    sand_density = 2600.
+    if sleipner == True:
+        porosity = 0.35 
+        xperm = 2.e-12
+        yperm = 2.e-12
+        zperm = xperm /3.
+    else:
+        porosity = 0.35
+        xperm = 2.e-12
+        yperm = xperm
+        zperm = xperm 
+
+    if linear_cap == True:
+        cap = 'linear'
+        cap = 'none'
+    else: 
+        cap = 'vanGenuchten'
+
+    if linear_rp == True:
+        rel_perm = 'linear'
+    else:
+        rel_perm = 'vanGenuchten'
+
+    if cap == 'vanGenuchten':
+        cp_vals = [0.4, 0.0, 1.61e-3, 1.e1, 0.999]
+    elif cap == 'none':
+        cp_vals = []
+    else:
+        thres_cap = 1.e-7
+        cp_vals = [thres_cap, 0.2, 1.0]# linear
+
+    if rel_perm == 'vanGenuchten':
+        rp_vals = [0.8, 0.2, 1.0, 0.05]
+    else:
+        rp_vals = [0.2, 0., 1., 1.]# linear
+
+    plot_relperm_cap(rp_vals, cp_vals, fmt = 'pdf',\
+            rp = rel_perm, cp = cap)
+
+    write_separator(f, 'ROCKS')
+    # SANDDDD
+    write_rocks(f, name, sand_density, porosity, xperm, yperm, zperm, \
+        cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
+        cap = cap, rel_perm = rel_perm)
+    # SHALE STUFFFFFFFFFFF
+    name = 'shale'
+    shale_density = 2600.
+    porosity = 0.35
+    xperm = 1.e-18
+    yperm = 1.e-18
+    zperm = 1.e-18
+    write_rocks(f, name, shale_density, porosity, xperm, yperm, zperm, \
+        cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
+        cap = cap, rel_perm = rel_perm,\
+        end = True)
+
+    # Cavanagh test case
+    # output_day_list.append(365.25 * 50)
+
+    write_multi(f)
+    write_selec(f)
+    write_start(f)
+    write_param(f, tmax = output_day_list[-1] * 24 * 3600,\
+            tolexp = tolerance)
+    linear_solver_integer = 5
+    preprocess_integer = 1
+    write_solvr(f, linear_solver_integer, preprocess_integer )
+
+    phase = 'co2'
+    if hydro == True:
+        mass_rate = 0.0
+    else:
+        if sleipner == True:
+            mass_rate = 4.475
+        else:
+            mass_rate = 1.00
+    # in megatons per year
+    # estimated flow rate.
+    massinflow = [0.0198, 0.0405, 0.0437, 0.0540, 0.0740, 0.1030, \
+                                0.1390, 0.1830, 0.2370, 0.2960, 0.370]
+    kg_per_sec_factor = 31.71 # kg/s per mt/yr
+    kgInflow = [ x * kg_per_sec_factor for x in massinflow]
+
+    if type1_source == True:
+        type1_source_cell = eleme
+        write_gener(f, eleme, phase = phase, mass_rate = 0.0 )
+    else:
+        type1_source_cell = 'none'
+        write_gener(f, eleme, phase = phase, mass_rate = mass_rate)
+                #, kg_inflow = kgInflow, times = output_day_list )
+
+    write_times(f, output_day_list)
+    write_foft(f)
+    write_coft(f, sleipner)
+    write_goft(f)
+    write_separator(f, 'ENDCY')
+    f.close()
+
+    # f = open('mrad1','w')
+    # f.write('*mrad1* Make mesh for rad1layer\n')
+    # write_meshmaker(f , flat = True, nx = 5, Ny = 5, nz = 3)
+    # write_separator(f, 'ENDFI')
+    # f.close()
+
+    # create an input grid instance
+    tg = T2InputGrid(nx, ny, nz)
+
+    solubility = 0.454104e-3
+    #solubility = 0.0
+
+    if uniform == True:
+        brine_density = 1016.4
+        altered_cell = 'eA2 2'
+        altered_cell = 'none'
+        tg.fill_uniform_grid(porosity, dx, dy, dz, density = brine_density,\
+                solubility_limit = solubility,\
+                altered_cell = altered_cell)
+        e_cel = 'uniform'
+        tg.write_mesh(e_cel, two_d = two_d, uniform = uniform,\
+                boundary_type = edge_bc_type, shale = shale,\
+                type1_source_cell = type1_source_cell)
+    else:
+        brine_density = 1019.35
+        if write_mesh == True:
+            tg.fill_3d_grid(e_cel, temperature = 37., density = brine_density,\
+                    two_d = two_d, solubility = solubility,\
+                    shale = shale)
+            tg.write_mesh(e_cel, two_d = two_d, uniform = uniform,\
+                    boundary_type = edge_bc_type, shale = shale,\
+                    type1_source_cell = type1_source_cell)
+        else:
+            hdm = hydro_directory + '_dir/MESH'
+            call (["cp", hdm, './'])
+
+
+    if hydro_directory == False:
+        tg.write_incon(porosity)
+    else:
+        tg.use_old_incon(hydro_directory,type1_source_cell = type1_source_cell,\
+                saturation_fraction = sat_frac)
+
+    print "Write Time"
+    print clock() - t_read
+    tg.plot_cells(show = False, two_d = two_d)
+    tg.plot_cells_slice(direc = 2, ind = 0, show = False)
+    return "create_t2_input COMPLETE"
+
 def write_separator(f, keyword):
     """ writes for the following keywords
     START ROCKS
@@ -21,7 +212,7 @@ def write_separator(f, keyword):
     """
     if keyword == 'ENDFI':
         f.write(''.join([keyword,'----']))
-        f = writeDashes(f)
+        f = write_dashes(f)
     elif keyword == 'MOP':
         f.write('----*----1 MOP: 123456789*123456789*1234')
         f.write(' ---*----5----*----6----*----7----*----8')
@@ -32,7 +223,7 @@ def write_separator(f, keyword):
         f.write('\r\n')
     elif keyword =='MESHMAKER':
         f.write('MESHMAKER')
-        writeDashes(f)
+        write_dashes(f)
         f.write('\r\n')
     elif (  
             keyword == 'START' or 
@@ -50,17 +241,14 @@ def write_separator(f, keyword):
             keyword == 'INCON' or  
             keyword == 'ENDCY'    ):
         f.write(''.join([keyword,'----']))
-        f = writeDashes(f)
+        f = write_dashes(f)
         f.write('\r\n')
     else :
         print "keyword = " + keyword
         raise NameError('Invalid Keyword')
     return f
 
-def writeDashes(f):
-    """ f must be an open file in w mode: writes this: 
-    1----*----2----*----3----*----4----*----5----*----6----*----7----*----8
-    """
+def write_dashes(f):
     f.write('1----*----2----*----3----*----4----*----5----*----6----*----7----*----8')
     return f
 
@@ -111,139 +299,6 @@ def write_rocks(f, name, density, porosity, xperm, yperm, zperm, \
     if end == True:
         f.write('\r\n')
     return f
-
-def plot_relperm_cap(rp_vals, cp_vals, fmt = 'png',\
-        rp = 'linear', cp = 'linear'):
-
-    print "PLOTTING RELATIVE PERMEABILITY AND CAPILLARY PRESSURE CURVES"
-    nvals = 100
-    if rp == 'linear':
-        sbres = rp_vals[0]
-    else:
-        sbres = rp_vals[1]
-    sat = np.linspace(sbres, 1., nvals)
-    pcap = np.zeros(nvals)
-    krl = np.zeros(nvals)
-    krg = np.zeros(nvals)
-
-    if cp == 'linear':
-        for i in range(len(sat)):
-            pcap[i] = cap_linear(sat[i], cp_vals)
-    elif cp == 'none':
-        for i in range(len(sat)):
-            pcap[i] = 0.
-    else:
-        for i in range(len(sat)):
-            pcap[i] = -cap_vangenuchten(sat[i], cp_vals)
-    if rp == 'linear':
-        for i in range(len(sat)):
-            krl[i], krg[i] = rel_perms_linear(sat[i], rp_vals)
-    else:
-        for i in range(len(sat)):
-            krl[i], krg[i] = rel_perms_vangenuchten(sat[i], rp_vals)
-
-    font = { 'size'   : 14}
-    matplotlib.rc('font', **font)
-    f = plt.figure(num=None , dpi = 480, \
-        facecolor = 'w', edgecolor = 'k')
-    #f.suptitle('Capillary Pressure Curve')
-    ax = f.add_subplot(111)
-    ax.set_xlabel('Sw []')
-    ax.set_ylabel('Capillary Pressure [Pa]')
-    p = plt.plot(sat, pcap)
-    f.savefig('capillary_pressure' + '.' + fmt)
-    plt.clf()
-    plt.close()
-
-    g = plt.figure(num=None , dpi = 480, \
-        facecolor = 'w', edgecolor = 'k')
-    #g.suptitle('Relative Permeability Curves')
-    ax = g.add_subplot(111)
-    ax.set_xlabel('Sw []')
-    ax.set_ylabel('Relative Permeability []')
-    p = plt.plot(sat, krl, label = 'liquid')
-    p = plt.plot(sat, krg, label = 'gas')
-    plt.legend()
-    g.savefig('rel_perm_curves' + '.' + fmt)
-    plt.clf()
-    plt.close()
-
-    return 0
-
-def cap_linear(s, cp_vals):
-    if cp_vals[2] < cp_vals[1]:
-        print 'LINEAR CAPILLARY PRESSURE BOUND DONT MAKE NO SENSE'
-        return 1
-    if s <= cp_vals[1]:
-        pcap = -cp_vals[0]
-    elif s >= cp_vals[2]:
-        pcap = 0
-    else: 
-        pcap = -cp_vals[0] *(cp_vals[2] - s) / (cp_vals[2] - cp_vals[1])
-    return pcap
-
-def cap_vangenuchten(sl, cp_vals):
-    lamb = cp_vals[0]
-    slr = cp_vals[1]
-    p_0 = 1. / cp_vals[2]
-    pmax = cp_vals[3]
-    sls = cp_vals[4]
-
-    ss = (sl - slr) / (sls - slr)
-
-    pcap = -p_0 * pow(pow(ss,-1./lamb) - 1, 1. - lamb)
-    if pcap < -pmax:
-        pcap = -pmax
-    elif pcap > 0.:
-        pcap = 0.
-
-    return pcap
-
-def rel_perms_linear(sl, rp_vals):
-    sg = 1. - sl
-    l_slope = 1 / (rp_vals[2] - rp_vals[0])
-    g_slope = 1 / (rp_vals[3] - rp_vals[1])
-
-    if sl <= rp_vals[0]:
-        krl = 0.
-    elif sl >= rp_vals[2]:
-        krl = 1.
-    else:
-        krl = (sl - rp_vals[0]) * l_slope
-
-    if sg <= rp_vals[1]:
-        krg = 0.
-    elif sg >= rp_vals[3]:
-        krg = 1.
-    else:
-        krg = (sg - rp_vals[1]) * g_slope
-
-    return krl, krg
-
-def rel_perms_vangenuchten(sl, rp_vals):
-    lamb = rp_vals[0]
-    s_lr = rp_vals[1]
-    s_ls = rp_vals[2]
-    s_gr = rp_vals[3]
-
-    ss = (sl - s_lr) / (s_ls - s_lr)
-    sh = (sl - s_lr) / ( 1. - s_lr - s_gr)
-
-    if sl < s_ls:
-        krl = np.sqrt(ss) * pow(1 - pow(1 - pow(ss, 1./lamb), lamb), 2.)
-    else:
-        krl = 1.
-
-    if s_gr == 0.:
-        krg = 1. - krl
-    elif s_gr > 0.:
-        krg = pow(1. - sh, 2.) * (1 - pow(sh, 2.))
-    else: 
-        print "s_gr < 0 in rel_perms_vangenuchten"
-        return 1
-
-    return krl, krg
-
 def write_multi(f, mode = 'isothermal'):
     if mode == 'isothermal':
         write_separator(f, 'MULTI')
@@ -326,7 +381,7 @@ def write_solvr(f, linsolve_int, preprocess_int, tolexp = -7):
             '   O0    1.0e-1   1.0e' + tolstr +'\r\n')
     return f
 
-def write_gener(f, eleme, phase = 'brine', mass_rate = .1585, column_inj = False,\
+def write_gener(f, eleme, phase = 'brine', mass_rate = .1585, \
         kg_inflow = [], times = []):
     """
             So far only writes one constant rate. Need to fix later
@@ -338,16 +393,8 @@ def write_gener(f, eleme, phase = 'brine', mass_rate = .1585, column_inj = False
         p = 'COM1 '
 
     if kg_inflow == [] :
-        if column_inj == False:
-            mr = '{: 10.4f}'.format(mass_rate)
-            f.write(eleme + 'inj 1'+ 19 * ' ' + '1' + 5 * ' ' + p  + mr  + '\r\n')
-        else:
-            print mass_rate / len(column_inj)
-            mr = '{: 10.4f}'.format(mass_rate / len(column_inj))
-            for i in range(len(column_inj)):
-                ir = '{:2d}'.format(i+1)
-                f.write(column_inj[i] + 'inj' + ir + 19 * ' '  +\
-                        '1' + 5 * ' ' + p  + mr  + '\r\n')
+        mr = '{: 10.4f}'.format(mass_rate)
+        f.write(eleme + 'inj 1'+ 19 * ' ' + '1' + 5 * ' ' + p  + mr  + '\r\n')
     else: 
         if len(kg_inflow) != len(times):
             print "mass rate and time arrays are not the same length"
@@ -407,8 +454,6 @@ def write_gener(f, eleme, phase = 'brine', mass_rate = .1585, column_inj = False
             if i % 5 == 0:
                 f.write('\r\n')
         f.write('\r\n')
-
-    #close
     f.write('\r\n')
     return f
 
@@ -431,9 +476,7 @@ def write_times(f, timelist):
         if count == 8: 
             f.write('\r\n')
             count = 0
-
     f.write('\r\n')
-
     return f
 
 def write_foft(f):
@@ -461,7 +504,7 @@ def write_goft(f):
 def write_meshmaker(f , rect = True, flat = True, nx = 65, ny = 119, nz = 1):
     write_separator(f, 'MESHMAKER')
     f.write('XYZ\r\n')
-    # degrees 
+    # degrees to rotate domain
     f.write('        0.\r\n')
 
     f.write('NX     '+ str(nx)+'\r\n')
@@ -498,7 +541,7 @@ def write_meshmaker(f , rect = True, flat = True, nx = 65, ny = 119, nz = 1):
 
 def format_float_mesh(val):
     """ takes in a double, returns a string to be entered into the MESH file
-            ( output s   , val )
+            ( output 's' , val )
             ('-.5000E-00', -0.5)
             ('0.1000E+01', 1.0)
             ('0.3500E+03', 350.0)
@@ -512,10 +555,6 @@ def format_float_mesh(val):
         l[-1] = str( int(l[-1]) + 1 )
     elif l[-3] == '-':
         l[-1] = str( int(l[-1]) - 1 )
-    else : 
-        print "What you input was not a float or somthin"
-        print "writingFunctions.format_float_mesh(val)"
-        print "val = " + str(val)
     if l[0] != '-':
         l[0] = '0'
     s = ''.join(l)
@@ -523,7 +562,6 @@ def format_float_mesh(val):
 
 def format_float_rocks(val):
     return '{: .3e}'.format(val)
-    
 
 def format_float_incon(val):
     """ formats to fit in the INCON, includes blank chars before number
@@ -544,7 +582,6 @@ def format_float_incon(val):
     return s
 
 class T2InputGrid(object):
-
     def __init__(self, nx, ny, nz):
         self.elements = []
         self.boundary = []
@@ -584,7 +621,7 @@ class T2InputGrid(object):
 
     def get_x_char(self, i):
         if i > 99 or i < 0 :
-            print "change your x indexing system"
+            print "only works for nx < 100"
             return 1
         else : 
             c1 = str(i)
@@ -598,7 +635,7 @@ class T2InputGrid(object):
 
     def get_y_char(self, j):
         if j > 259 or j < 0:
-            print "change y indexing system"
+            print "only works for ny < 260"
             return 1
         else : 
             letters = string.uppercase
@@ -609,7 +646,7 @@ class T2InputGrid(object):
 
     def get_z_char(self, k):
         if k > 51 or k < 0:
-            print 'fix your z indecisis'
+            print 'Only works for nz < 52'
             return 1
         else:
             letters =  string.lowercase + string.uppercase
@@ -697,7 +734,7 @@ class T2InputGrid(object):
 
     def fill_3d_grid(self, e_cells , temperature = 37., density = 1000.,\
             two_d = False,  gradient = 10 , solubility = 0.474e-1, \
-            five_section = [], shale = True):
+            shale = True):
         """Fills the 3d grid with x, y, and z
         'gradient' specifies the hydrostatic gradient. [MPa/km]
 
@@ -715,17 +752,9 @@ class T2InputGrid(object):
         """
         print "FILLING 3D grid based on Sleipner input data........"
 
-        if five_section != []:
-            self.nx_start = five_section[0]
-            self.ny_start = five_section[1]
-            self.nz_start = five_section[2]
-            self.nx = self.nx_start + 5
-            self.ny = self.ny_start + 5
-            self.nz = self.nz_start + 5
-        else:
-            self.nx_start = 0
-            self.ny_start = 0
-            self.nz_start = 0
+        self.nx_start = 0
+        self.ny_start = 0
+        self.nz_start = 0
 
         if two_d == True:
             nzi = 1
@@ -749,7 +778,6 @@ class T2InputGrid(object):
                         self.write_t2_cell(e_cells, i, j, k,\
                                 temperature, density,\
                                 two_d, gradient, solubility)
-                        #el_array options
                         temparrayz.append(eleme)
                 temparray.append(temparrayz)
             self.el_array.append(temparray)
@@ -773,7 +801,7 @@ class T2InputGrid(object):
         corners = []
         for c in oc:
             x, y = c.getXY()
-            # FLIPPING ALL ZS IN THIS. 
+            # Depth from eclipse file is converted to elevation
             z = - c.getZ()
             nc = self.Corner(x, y, z)
             corners.append(nc)
@@ -1275,6 +1303,7 @@ class T2InputGrid(object):
              
         return g, count
 
+    # write INCON file --------------------------------------------------------
     def write_incon(self, porosity):
         print "Writing INCON FILE"
         h = open('INCON','w')
@@ -1335,6 +1364,7 @@ class T2InputGrid(object):
         print "INCON from SAVE complete"
         return 0
     
+    # Plotting routines ------------------------------------------------------
     def plot_cells(self, show = True, two_d = False):
         print " Creating scatter plot of all cells."
         x = []
@@ -1449,6 +1479,136 @@ class T2InputGrid(object):
         plt.close()
         print "Scatter cells slice complete"
         return 0
+
+def plot_relperm_cap(rp_vals, cp_vals, fmt = 'png',\
+        rp = 'linear', cp = 'linear'):
+
+    print "PLOTTING RELATIVE PERMEABILITY AND CAPILLARY PRESSURE CURVES"
+    nvals = 100
+    if rp == 'linear':
+        sbres = rp_vals[0]
+    else:
+        sbres = rp_vals[1]
+    sat = np.linspace(sbres, 1., nvals)
+    pcap = np.zeros(nvals)
+    krl = np.zeros(nvals)
+    krg = np.zeros(nvals)
+
+    if cp == 'linear':
+        for i in range(len(sat)):
+            pcap[i] = cap_linear(sat[i], cp_vals)
+    elif cp == 'none':
+        for i in range(len(sat)):
+            pcap[i] = 0.
+    else:
+        for i in range(len(sat)):
+            pcap[i] = -cap_vangenuchten(sat[i], cp_vals)
+    if rp == 'linear':
+        for i in range(len(sat)):
+            krl[i], krg[i] = rel_perms_linear(sat[i], rp_vals)
+    else:
+        for i in range(len(sat)):
+            krl[i], krg[i] = rel_perms_vangenuchten(sat[i], rp_vals)
+
+    font = { 'size'   : 14}
+    matplotlib.rc('font', **font)
+    f = plt.figure(num=None , dpi = 480, \
+        facecolor = 'w', edgecolor = 'k')
+    ax = f.add_subplot(111)
+    ax.set_xlabel('Sw []')
+    ax.set_ylabel('Capillary Pressure [Pa]')
+    p = plt.plot(sat, pcap)
+    f.savefig('capillary_pressure' + '.' + fmt)
+    plt.clf()
+    plt.close()
+
+    g = plt.figure(num=None , dpi = 480, \
+        facecolor = 'w', edgecolor = 'k')
+    #g.suptitle('Relative Permeability Curves')
+    ax = g.add_subplot(111)
+    ax.set_xlabel('Sw []')
+    ax.set_ylabel('Relative Permeability []')
+    p = plt.plot(sat, krl, label = 'liquid')
+    p = plt.plot(sat, krg, label = 'gas')
+    plt.legend()
+    g.savefig('rel_perm_curves' + '.' + fmt)
+    plt.clf()
+    plt.close()
+    return 0
+
+def cap_linear(s, cp_vals):
+    if cp_vals[2] < cp_vals[1]:
+        print 'LINEAR CAPILLARY PRESSURE BOUND DONT MAKE NO SENSE'
+        return 1
+    if s <= cp_vals[1]:
+        pcap = -cp_vals[0]
+    elif s >= cp_vals[2]:
+        pcap = 0
+    else: 
+        pcap = -cp_vals[0] *(cp_vals[2] - s) / (cp_vals[2] - cp_vals[1])
+    return pcap
+
+def cap_vangenuchten(sl, cp_vals):
+    lamb = cp_vals[0]
+    slr = cp_vals[1]
+    p_0 = 1. / cp_vals[2]
+    pmax = cp_vals[3]
+    sls = cp_vals[4]
+
+    ss = (sl - slr) / (sls - slr)
+
+    pcap = -p_0 * pow(pow(ss,-1./lamb) - 1, 1. - lamb)
+    if pcap < -pmax:
+        pcap = -pmax
+    elif pcap > 0.:
+        pcap = 0.
+
+    return pcap
+
+def rel_perms_linear(sl, rp_vals):
+    sg = 1. - sl
+    l_slope = 1 / (rp_vals[2] - rp_vals[0])
+    g_slope = 1 / (rp_vals[3] - rp_vals[1])
+
+    if sl <= rp_vals[0]:
+        krl = 0.
+    elif sl >= rp_vals[2]:
+        krl = 1.
+    else:
+        krl = (sl - rp_vals[0]) * l_slope
+
+    if sg <= rp_vals[1]:
+        krg = 0.
+    elif sg >= rp_vals[3]:
+        krg = 1.
+    else:
+        krg = (sg - rp_vals[1]) * g_slope
+
+    return krl, krg
+
+def rel_perms_vangenuchten(sl, rp_vals):
+    lamb = rp_vals[0]
+    s_lr = rp_vals[1]
+    s_ls = rp_vals[2]
+    s_gr = rp_vals[3]
+
+    ss = (sl - s_lr) / (s_ls - s_lr)
+    sh = (sl - s_lr) / ( 1. - s_lr - s_gr)
+
+    if sl < s_ls:
+        krl = np.sqrt(ss) * pow(1 - pow(1 - pow(ss, 1./lamb), lamb), 2.)
+    else:
+        krl = 1.
+
+    if s_gr == 0.:
+        krg = 1. - krl
+    elif s_gr > 0.:
+        krg = pow(1. - sh, 2.) * (1 - pow(sh, 2.))
+    else: 
+        print "s_gr < 0 in rel_perms_vangenuchten"
+        return 1
+
+    return krl, krg
 
 if __name__ == '__main__':
     nx = 65
