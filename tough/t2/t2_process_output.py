@@ -12,19 +12,8 @@ def process_t2_output(sim_title, parallel = False, split = 0,\
     grid = ot2f.T2grid()
     # read the coordinate data from MESH
     grid.read_mesh()
-    # count the number of outputs
-    num_outputs = 0 
-    #if parallel == True:
-        #f = open('OUTPUT_DATA_'+ sim_title)
-    #else:
-        #f = open(sim_title + '.out')
-    #a = f.read()
-    #b = a.split()
-    #for char in b:
-        #if char == 'OUTPUT':
-            #num_outputs +=1
-    #print "The number of timesteps output: " + str(num_outputs)
-    #f.close()
+
+    # number of timesteps from TOUGH2 output file.
     num_outputs = 24
 
     # read the file[s] for the timestep data

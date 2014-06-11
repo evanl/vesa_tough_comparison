@@ -3,13 +3,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 from mpl_toolkits.mplot3d import Axes3D
+import read_eclipse as re
+import eclipse_cells as ec
+from time import clock
 import string
 
 def create_t2_input(sim_title, two_d = False, uniform = False,\
         sleipner = False, hydro = False, hydro_directory = False,\
         num_steps = 11, days_per_step = 365.25, \
         edge_bc_type = 1, linear_rp = False,\
-        linear_cap = False, shale = True, tolerance = -7,\
+        no_cap = False, shale = True, tolerance = -7,\
         type1_source = False, sat_frac = 0.8,\
         write_mesh = True):
     """ Creates a TOUGH2 injection simulation
@@ -60,8 +63,7 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
         yperm = xperm
         zperm = xperm 
 
-    if linear_cap == True:
-        cap = 'linear'
+    if no_cap == True:
         cap = 'none'
     else: 
         cap = 'vanGenuchten'
@@ -72,9 +74,9 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
         rel_perm = 'vanGenuchten'
 
     if cap == 'vanGenuchten':
-        cp_vals = [0.4, 0.0, 1.61e-3, 1.e1, 0.999]
+        cp_vals = [0.4, 0.0, 1.61e-3, 1.e7, 0.999]
     elif cap == 'none':
-        cp_vals = []
+        cp_vals = [0.4, 0.0, 1.61e-3, 1.e1, 0.999]
     else:
         thres_cap = 1.e-7
         cp_vals = [thres_cap, 0.2, 1.0]# linear
@@ -146,13 +148,7 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
     write_separator(f, 'ENDCY')
     f.close()
 
-    # f = open('mrad1','w')
-    # f.write('*mrad1* Make mesh for rad1layer\n')
-    # write_meshmaker(f , flat = True, nx = 5, Ny = 5, nz = 3)
-    # write_separator(f, 'ENDFI')
-    # f.close()
-
-    # create an input grid instance
+    # create an input grid 
     tg = T2InputGrid(nx, ny, nz)
 
     solubility = 0.454104e-3
@@ -171,10 +167,11 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
                 type1_source_cell = type1_source_cell)
     else:
         brine_density = 1019.35
+        temp = 32
         if write_mesh == True:
-            tg.fill_3d_grid(e_cel, temperature = 37., density = brine_density,\
-                    two_d = two_d, solubility = solubility,\
-                    shale = shale)
+            tg.fill_eclipse_grid(e_cel, temperature = temp, \
+                    density = brine_density, two_d = two_d, \
+                    solubility = solubility, shale = shale)
             tg.write_mesh(e_cel, two_d = two_d, uniform = uniform,\
                     boundary_type = edge_bc_type, shale = shale,\
                     type1_source_cell = type1_source_cell)
@@ -193,7 +190,8 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
     print clock() - t_read
     tg.plot_cells(show = False, two_d = two_d)
     tg.plot_cells_slice(direc = 2, ind = 0, show = False)
-    return "create_t2_input COMPLETE"
+    print "create_t2_input COMPLETE"
+    return tg
 
 def write_separator(f, keyword):
     """ writes for the following keywords
@@ -273,7 +271,7 @@ def write_rocks(f, name, density, porosity, xperm, yperm, zperm, \
     if cap == 'vanGenuchten':
         cp_type = 7
     elif cap == 'none':
-        cp_type = 8
+        cp_type = 7
     else:
         cp_type = 1
 
@@ -323,7 +321,8 @@ def write_start(f):
 
     return f
 
-def write_param(f, init_check = False, pres = 110.5e5, salt = 3.2e-2, co2 = 0.0, temp = 37., \
+def write_param(f, init_check = False, pres = 110.5e5, salt = 3.2e-2, \
+        co2 = 0.0, temp = 37., \
     tmax = 63.1152e6, tolexp = -7):
     write_separator(f, 'PARAM')
 
@@ -582,15 +581,83 @@ def format_float_incon(val):
     return s
 
 class T2InputGrid(object):
+    """
+        T2InputGrid contains the functions that handle the numerical grid
+        while creating TOUGH2/ECO2N input files. 
+
+        self.elements = []
+         - A 1d list that contains a set of five character element keys used 
+         in TOUGH2 simulations. This list is mainly used when writing 
+         INCON files.
+         
+        self.boundary = []
+        - An ancillary list that keeps track of cells on the boundary 
+          of the domain, used for making fixed-pressure boundary conditions
+          during injection simulations
+
+        self.el_array = []
+        - 3d array containing all of the element keys in space. When called:
+          self.el_array[i][j][k]
+          returns the 5 character element key.
+        self.x = {}
+        - Dictionary that returns the x position of an element based on its key:
+
+        self.y = {}
+        - Dictionary that returns the y position of an element 
+        
+        self.z = {}
+        - Dictionary that returns the z position of an element 
+
+        self.corners = {}
+        - Dictionary that contains a sorted list of corners from the eclipse
+          grid file. A corner contains the x-y-z location of a polyhedron
+          corner from an ECLIPSE file. 
+          Each list has length of 8. The indices are labeled below:
+          ----- t2_corner_sketch ------------
+          High elevation    [0] *-----* [1]    ^ 
+          plan view             |     |        | North
+                                |     |
+                            [2] *-----* [3]
+
+          Low elevation     [4] *-----* [5]    ^ 
+          plan view             |     |        | North
+                                |     |
+                            [6] *-----* [7]
+
+        self.mat = {}     
+        - Dictionary that returns the rock type of an element 
+
+        self.vol = {}
+        - Dictionary that returns the volume  of an element 
+
+        self.area = {}
+        - Dictionary that returns the thermal contact area of an element 
+        - NOTE: This is not used in isothermal mode and is hardcoded
+          to be zero. This will need to be changed for nonisothermal simulations
+        
+        self.pres = {}
+        - Dictionary that returns the fluid pressure of an element 
+
+        self.na_cl = {}
+        - Dictionary that returns the salt concentration of an element 
+
+        self.x_co2 = {}
+        - Dictionary that returns the dissolved CO2 concentration of an element
+
+        self.temp = {}
+        - Dictionary that returns the temperature of an element 
+
+    """
     def __init__(self, nx, ny, nz):
+        self.nx = nx
+        self.ny = ny
+        self.nz = nz
         self.elements = []
         self.boundary = []
         self.el_array = []
         self.x = {}
         self.y = {}
         self.z = {}
-        self.z_top = {}
-        self.z_bot = {}
         self.corners = {}
         self.mat = {}
         self.vol = {}
@@ -599,9 +666,6 @@ class T2InputGrid(object):
         self.na_cl = {}
         self.x_co2 = {}
         self.temp = {}
-        self.nx = nx
-        self.ny = ny
-        self.nz = nz
 
     class Corner(object):
         def __init__(self, x, y, z):
@@ -620,6 +684,10 @@ class T2InputGrid(object):
 
 
     def get_x_char(self, i):
+        """ returns a 2-character string to be added to the element ID
+            self.get_x_char(4)  -> ' 4'
+            self.get_x_char(17) -> '17'
+        """
         if i > 99 or i < 0 :
             print "only works for nx < 100"
             return 1
@@ -634,6 +702,10 @@ class T2InputGrid(object):
             return char
 
     def get_y_char(self, j):
+        """ returns a 2-character string to be added to the element ID
+            self.get_y_char(4)  -> 'A4'
+            self.get_y_char(17) -> 'B7'
+        """
         if j > 259 or j < 0:
             print "only works for ny < 260"
             return 1
@@ -645,6 +717,10 @@ class T2InputGrid(object):
             return char
 
     def get_z_char(self, k):
+        """ returns a 1-character string to be added to the element ID
+            self.get_z_char(4)  -> 'e'
+            self.get_z_char(17) -> 'r'
+        """
         if k > 51 or k < 0:
             print 'Only works for nz < 52'
             return 1
@@ -654,9 +730,22 @@ class T2InputGrid(object):
             return char
 
     def get_element_chars(self, i, j, k):
-        c1 = self.get_x_char( i)
-        c2 = self.get_y_char( j)
-        c3 = self.get_z_char( k)
+        """ Returns a 5 character element ID for i,j,k
+            get_element_chars(1, 2, 3)    -> 'dA2 1'
+            get_element_chars(25, 65, 11) -> 'lG525'
+
+            The scheme here was used to resemble the scheme used in the ECO2N
+            manual but different schemes could be used to generate 
+            element IDs.
+            Here, if the element id is '12345', 
+            '1' contains the z axis location
+            '23' contains the y axis location and 
+            '45' contains the x axis location.
+
+        """
+        c1 = self.get_x_char(i)
+        c2 = self.get_y_char(j)
+        c3 = self.get_z_char(k)
         el = c3 + c2 + c1
         if len(el) != 5:
             print "i, j, k"
@@ -732,7 +821,7 @@ class T2InputGrid(object):
         ind = i + nx * j + nx * ny * k
         return ind 
 
-    def fill_3d_grid(self, e_cells , temperature = 37., density = 1000.,\
+    def fill_eclipse_grid(self, e_cells , temperature = 37., density = 1000.,\
             two_d = False,  gradient = 10 , solubility = 0.474e-1, \
             shale = True):
         """Fills the 3d grid with x, y, and z
@@ -775,7 +864,7 @@ class T2InputGrid(object):
                             sand_count +=1
                         count +=1
                         self.elements.append(eleme)
-                        self.write_t2_cell(e_cells, i, j, k,\
+                        self.write_eclipse_cell(e_cells, i, j, k,\
                                 temperature, density,\
                                 two_d, gradient, solubility)
                         temparrayz.append(eleme)
@@ -786,75 +875,79 @@ class T2InputGrid(object):
         print len(self.el_array), len(self.el_array[0]), len(self.el_array[0][0])
         return 0
 
-    def write_t2_cell(self, e_cells, i, j, k,\
+    def write_eclipse_cell(self, e_cells, i, j, k,\
             temperature = 37., density = 1000.,\
             two_d = False,  gradient = 10 , solubility = 0.474e-1):
-        ind = self.e_cell_index(i, j, k)
+        """ converts the corners from the eclipse_cell order into the TOUGH2 input
+            order for convenience in doing volume calculations
+        """
+
+        eclipse_index = self.e_cell_index(i, j, k)
         eleme = self.get_element_chars(i, j, k)
-        # sets material id
-        if e_cells[ind].getXPermeability() > 1 or two_d == True:
+
+        if e_cells[eclipse_index].getXPermeability() > 1 or two_d == True:
             self.mat[eleme] = 'sands'
         else:
             self.mat[eleme] = 'shale'
 
-        oc = e_cells[ind].getCorners()
-        corners = []
-        for c in oc:
-            x, y = c.getXY()
-            # Depth from eclipse file is converted to elevation
-            z = - c.getZ()
-            nc = self.Corner(x, y, z)
-            corners.append(nc)
-        self.corners[eleme] = corners
 
-        # getting more precise center and volume
-        x = self.get_x_centroid(corners)
-        y = self.get_y_centroid(corners)
-        z = self.get_z_centroid(corners)
-        volume = self.get_volume(x, y, z, corners)
+        # takes original corners from eclipse_cell and converts them to 
+        # local corners to be used in volume calcs
+        # the goal is to get the x,y,z coordinates of the centroid and get 
+        # the cell volume to 
         if two_d == True:
+            # Finds uppermost grid cell and lowermost grid cell
+            # from eclipse cells
             pc_count = []
             for k in range(self.nz):
-                pc_ind = self.e_cell_index(i,j,k)
                 pc_ind = self.e_cell_index(i,j,k)
                 if e_cells[pc_ind].getXPermeability() > 1.:
                     pc_ind_1 = self.e_cell_index(i,j,k+1)
                     pc_count.append(k)
-                    ztop = -e_cells[pc_ind].getTopZ()
-                    zbot = -e_cells[pc_ind_1].getTopZ()
-                    dz =  ztop - zbot
-                    if i == 32 or i == 25:
-                        if j == 77:
-                            print "i, j, k, dz, ", i, j, k, dz
             bot_ind = self.e_cell_index(i, j, pc_count[-1])
             top_ind = self.e_cell_index(i, j, pc_count[0])
-            #volume = dx * dy * dz
-            #new idea
-            tc = e_cells[top_ind].getCorners()
-            bc = e_cells[bot_ind].getCorners()
-            corners = []
-            for c_ind in range(4):
-                x, y = tc[c_ind].getXY()
-                z = -tc[c_ind].getZ()
+
+            # takes high elevation corners from uppermost cell and low elevation
+            # corners from lowermost cell and makes vertically averaged cell
+            top_corners_in = e_cells[top_ind].getCorners()
+            bot_corners_in = e_cells[bot_ind].getCorners()
+            vert_avg_corners = []
+            for corner_index in range(4):
+                x, y = top_corners_in[corner_index].getXY()
+                z = -top_corners_in[corner_index].getZ()
                 nc = self.Corner(x, y, z)
-                corners.append(nc)
-            for c_ind in range(4,8):
-                x,y = bc[c_ind].getXY()
-                z = -bc[c_ind].getZ()
+                vert_avg_corners.append(nc)
+            for corner_index in range(4,8):
+                x,y = bot_corners_in[corner_index].getXY()
+                z = -bot_corners_in[corner_index].getZ()
                 nc = self.Corner(x,y,z)
-                corners.append(nc)
-            self.corners[eleme] = corners
-            x = self.get_x_centroid(corners)
-            y = self.get_y_centroid(corners)
-            z = self.get_z_centroid(corners)
-            volume = self.get_volume(x, y, z, corners)
+                vert_avg_corners.append(nc)
+            temp_new_corners = vert_avg_corners
+        else:
+            # takes the regular 3d, local scale corners instead
+            original_corners = e_cells[eclipse_index].getCorners()
+            temp_new_corners = []
+            for c in original_corners:
+                x, y = c.getXY()
+                # Depth from eclipse file is converted to elevation
+                z = - c.getZ()
+                nc = self.Corner(x, y, z)
+                temp_new_corners.append(nc)
+
+        self.corners[eleme] = temp_new_corners
+        x = self.get_x_centroid(temp_new_corners)
+        y = self.get_y_centroid(temp_new_corners)
+        z = self.get_z_centroid(temp_new_corners)
         self.x[eleme] = x
         self.y[eleme] = y
         self.z[eleme] = z
+        self.vol[eleme] = self.get_volume(x, y, z, temp_new_corners)
+
         pressure = -z * gradient * density
-        self.vol[eleme] = volume
-        self.area[eleme] = 0.0
         self.pres[eleme] = pressure
+
+        # TODO must have physical nonzero value for nonisothermal mode
+        self.area[eleme] = 0.0
         self.na_cl[eleme] = 3.2e-2
         self.x_co2[eleme] = solubility
         self.temp[eleme] = temperature
@@ -883,30 +976,12 @@ class T2InputGrid(object):
             sum_c += c.get_z()
         return sum_c / count
   
-    def get_dx(self, eleme, direc):
-        """ returns the length of a grid cell in a particular direction.
-        dir is either 1, 2 or 3 for x, y and z directions.
-        i, j and k are the indices
-        """
-        if direc == 1 :
-            corners = self.corners[eleme]
-            dx = corners[0].get_x() - corners[1].get_x()
-            return dx
-        elif direc == 2 :
-            corners = self.corners[eleme]
-            dy = corners[0].get_y() - corners[2].get_y()
-            return dy
-        elif direc == 3 :
-            z1 = abs(e_cells[self.e_cell_index(i,j,k)].getTopZ() - \
-                    e_cells[self.e_cell_index(i,j,k)].getBottomZ())
-            return z1
-        else:
-            raise Exception("Invalid direction, \n" + \
-                    " Please specify 1, 2 or 3.\n")
-
     def get_volume(self, x, y, z, corners):
         """ uses the equation for volume of an orientable polyhedron
             V = 1/3 \sum_i x_i \dot n^hat_i A_i
+            See 
+            http://en.wikipedia.org/wiki/Polyhedron#Volume
+            for details.
         """
         face_map = ['west', 'south', 'east', 'north', 'bot', 'top']
 
@@ -923,6 +998,25 @@ class T2InputGrid(object):
 
     def get_area(self, corners, face):
         """ returns the area of a cell face, east, west, etc
+          For the vertical faces (east, west, north, south), this diagram is 
+          used to find the area by the trapezoid rule. 
+
+          -------------------------------------------------------
+          cross section     [x1,y1] *-----* [x2,y2]    ^ 
+                                    |     |        | positive Z
+                                    |     |
+                            [x1,y3] *-----* [x2,y4]
+
+          Note that the upper 'x' values are identical to lower ones since 
+          the eclipse cells are essentially columns.
+
+          For the horizontal face (top and bot), a planar fit is performed
+          to find the function z = f(x,y) in order to do a surface integral
+          in the manner seen here: 
+          http://en.wikipedia.org/wiki/Surface_integral
+
+          See the sketch below 't2_corner_sketch' in the T2InputGrid 
+          description for a diagram of all corners in the grid cell.
         """ 
         if face == 'west':
             x1 = corners[2].get_y()
@@ -977,8 +1071,13 @@ class T2InputGrid(object):
         else:
             raise Exception("Invalid Face, please specify" +  \
                     "one of the six faces in face_map \n\n")
-
         return area
+
+    def get_area_side(self, x1, x2, y1, y2, y3, y4):
+        h = x2 - x1
+        b1 = y4 - y2
+        b2 = y3 - y1
+        return 0.5 * h * (b1 + b2)
 
     def get_face_center(self, xc, yc, zc, corners, face):
         """ center vector location relative to polyhedron center
@@ -1065,12 +1164,6 @@ class T2InputGrid(object):
         c, resid, rank, sigma = np.linalg.lstsq(A, z)
         return c, resid, rank, sigma
 
-    def get_area_side(self, x1, x2, y1, y2, y3, y4):
-        h = x2 - x1
-        b1 = y4 - y2
-        b2 = y3 - y1
-        return 0.5 * h * (b1 + b2)
-        
     def write_mesh(self, e_cel, two_d = False, uniform = False,\
             boundary_type = 1, shale = True,\
             type1_source_cell = 'none'):

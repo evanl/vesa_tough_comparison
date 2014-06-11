@@ -1,11 +1,7 @@
 #Author - Evan Leister
 import sys
 import string
-from time import clock
-import read_eclipse as re
-import eclipse_cells as ec
 import t2_input_funcs as it2f
-from subprocess import call
 
 if __name__ == '__main__':
     """ t2_create_input is run in the following way from a command line 
@@ -23,19 +19,19 @@ if __name__ == '__main__':
     # dissolved fractions will be taken from the 'hydro_directory' + '_dir/'.
     # in order to run a particular grid to hydrostatic equilibrium, 
     # specify hydro = True and use num_timesteps = 1 and days_per_timestep = 30
-    hydro = False
+    hydro = True
 
     # if True, a uniform rectangular grid is generated.
-    uniform = True
+    uniform = False
 
     # makes two-d case 
     two_d = False
 
     # Uses the IEAGHG data for Layer 9
-    sleipner = False
+    sleipner = True
 
     # Leaves the shale cells in for the sleipner case
-    shale = True
+    shale = False
 
     # If true, creates linear rel perms
     linear_rp = False
@@ -60,7 +56,7 @@ if __name__ == '__main__':
             if shale == True:
                 hydro_directory = 'sl_hydro'
             else:
-                hydro_directory = 'sl_noshale_hydro'
+                hydro_directory = 'sl_noshale_hydro_t32'
         if two_d == True:
             hydro_directory = 'sl_twod_hydro_32'
 
@@ -72,14 +68,15 @@ if __name__ == '__main__':
 
     # specifies the number of output timesteps, and how many days are 
     # simulated in between each output.
-    num_timesteps = 24
-    days_per_timestep = 15
+    num_timesteps = 1
+    days_per_timestep = 1
 
-    print it2f.create_t2_input(sim_title, two_d = two_d, uniform = uniform, \
+    t2inputgrid = it2f.create_t2_input(sim_title, two_d = two_d, \
+            uniform = uniform, \
             sleipner = sleipner, hydro = hydro, \
             hydro_directory = hydro_directory, \
             num_steps = num_timesteps, \
             days_per_step = days_per_timestep, \
             edge_bc_type = edge_bc_type, linear_rp = linear_rp,\
-            linear_cap = no_cap, shale = shale, tolerance = -5,\
+            no_cap = no_cap, shale = shale, tolerance = -5,\
             type1_source = type1_source, sat_frac = sat_frac)
