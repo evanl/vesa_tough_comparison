@@ -14,7 +14,7 @@ def process_t2_output(sim_title, parallel = False, split = 0,\
     grid.read_mesh()
 
     # number of timesteps from TOUGH2 output file.
-    num_outputs = 24
+    num_outputs = 1
 
     # read the file[s] for the timestep data
     if parallel == True:
@@ -51,11 +51,11 @@ if __name__ == '__main__':
     if len(sys.argv) != 2:
         sys.exit( "Please specify a simulation title")
     sim_title = sys.argv[1]
-    hydro = False
+    hydro = True
     two_d = False
-    sleipner = False
+    sleipner = True
     section = False
-    shale = True
+    shale = False
     parallel = False
     split = 0
     double_balance = True
