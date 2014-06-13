@@ -2,6 +2,13 @@
 import sys
 import string
 import t2_input_funcs as it2f
+# TODO Nonobvious parameters in write_rocks
+# TODO Nonobvious parameters in write_param
+# TODO Capillary pressure fix? 
+# TODO Collate all input parameters to be called from this driver
+# TODO clean up processing routines into a returnable object that can be 
+# called by other routines. 
+# TODO comment post-processing routines
 
 if __name__ == '__main__':
     """ t2_create_input is run in the following way from a command line 
@@ -19,7 +26,7 @@ if __name__ == '__main__':
     # dissolved fractions will be taken from the 'hydro_directory' + '_dir/'.
     # in order to run a particular grid to hydrostatic equilibrium, 
     # specify hydro = True and use num_timesteps = 1 and days_per_timestep = 30
-    hydro = True
+    hydro = False
 
     # if True, a uniform rectangular grid is generated.
     uniform = False
@@ -56,7 +63,7 @@ if __name__ == '__main__':
             if shale == True:
                 hydro_directory = 'sl_hydro'
             else:
-                hydro_directory = 'sl_noshale_hydro_t32'
+                hydro_directory = 'sl_noshale_hydro_32'
         if two_d == True:
             hydro_directory = 'sl_twod_hydro_32'
 

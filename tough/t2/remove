@@ -4,3 +4,4 @@ rm GOFT LINEQ FOFT SAVE TABLE VERS COFT GENER INCON MESH rho_visc checkijk
 rm *.out
 rm *.png
 rm *.pdf
+rm *.txt

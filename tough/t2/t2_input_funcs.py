@@ -63,37 +63,32 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
         yperm = xperm
         zperm = xperm 
 
-    if no_cap == True:
-        cap = 'none'
-    else: 
-        cap = 'vanGenuchten'
-
     if linear_rp == True:
         rel_perm = 'linear'
     else:
         rel_perm = 'vanGenuchten'
 
-    if cap == 'vanGenuchten':
-        cp_vals = [0.4, 0.0, 1.61e-3, 1.e7, 0.999]
-    elif cap == 'none':
+    if no_cap == True:
+        # sets the maximum capillary pressure, parameter 4 in the list,
+        # to 10 Pa.
+        # this effectively makes zero capillary pressure in deep reservoir
+        # systems
         cp_vals = [0.4, 0.0, 1.61e-3, 1.e1, 0.999]
     else:
-        thres_cap = 1.e-7
-        cp_vals = [thres_cap, 0.2, 1.0]# linear
+        cp_vals = [0.4, 0.0, 1.61e-3, 1.e7, 0.999]
 
     if rel_perm == 'vanGenuchten':
         rp_vals = [0.8, 0.2, 1.0, 0.05]
     else:
         rp_vals = [0.2, 0., 1., 1.]# linear
 
-    plot_relperm_cap(rp_vals, cp_vals, fmt = 'pdf',\
-            rp = rel_perm, cp = cap)
+    plot_relperm_cap(rp_vals, cp_vals, fmt = 'pdf', rp = rel_perm)
 
     write_separator(f, 'ROCKS')
-    # SANDDDD
+    # SAND
     write_rocks(f, name, sand_density, porosity, xperm, yperm, zperm, \
         cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
-        cap = cap, rel_perm = rel_perm)
+        rel_perm = rel_perm)
     # SHALE STUFFFFFFFFFFF
     name = 'shale'
     shale_density = 2600.
@@ -103,7 +98,7 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
     zperm = 1.e-18
     write_rocks(f, name, shale_density, porosity, xperm, yperm, zperm, \
         cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
-        cap = cap, rel_perm = rel_perm,\
+        rel_perm = rel_perm,\
         end = True)
 
     # Cavanagh test case
@@ -181,7 +176,7 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
 
 
     if hydro_directory == False:
-        tg.write_incon(porosity)
+        tg.write_incon(shale = shale, porosity = porosity)
     else:
         tg.use_old_incon(hydro_directory,type1_source_cell = type1_source_cell,\
                 saturation_fraction = sat_frac)
@@ -254,6 +249,8 @@ def write_rocks(f, name, density, porosity, xperm, yperm, zperm, \
     cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
     cap = 'vanGenuchten', rel_perm = 'vanGenuchten',\
     end = False):
+    """
+    """
     f.write(name + '    2')
     d = '{: 10.0f}'.format(density)
     p = '{: 10.2f}'.format(porosity)
@@ -268,12 +265,7 @@ def write_rocks(f, name, density, porosity, xperm, yperm, zperm, \
     f.write('   0.0e-10\r\n')
 
     # Capillary pressure
-    if cap == 'vanGenuchten':
-        cp_type = 7
-    elif cap == 'none':
-        cp_type = 7
-    else:
-        cp_type = 1
+    cp_type = 7
 
     # relative permeability
     if rel_perm == 'vanGenuchten':
@@ -585,10 +577,6 @@ class T2InputGrid(object):
         T2InputGrid contains the functions that handle the numerical grid
         while creating TOUGH2/ECO2N input files. 
 
-        self.elements = []
-         - A 1d list that contains a set of five character element keys used 
-         in TOUGH2 simulations. This list is mainly used when writing 
-         INCON files.
          
         self.boundary = []
         - An ancillary list that keeps track of cells on the boundary 
@@ -647,6 +635,10 @@ class T2InputGrid(object):
         self.temp = {}
         - Dictionary that returns the temperature of an element 
 
+        self.num_elements = 0
+         - Number of elements in domain. 
+         To be used as a check after elements are created
+
     """
     def __init__(self, nx, ny, nz):
         self.nx = nx
@@ -666,6 +658,7 @@ class T2InputGrid(object):
         self.na_cl = {}
         self.x_co2 = {}
         self.temp = {}
+        self.num_elements = 0
 
     class Corner(object):
         def __init__(self, x, y, z):
@@ -760,9 +753,6 @@ class T2InputGrid(object):
     def fill_uniform_grid(self, porosity, dx, dy, dz, density = 1000.,\
             solubility_limit = 0.454104e-3, altered_cell = 'none'):
         # populates grid 
-        self.nx_start = 0
-        self.ny_start = 0
-        self.nz_start = 0
         g = open('MESH', 'w')
         print "MESH created with:"
         for i in range(self.nx):
@@ -841,22 +831,16 @@ class T2InputGrid(object):
         """
         print "FILLING 3D grid based on Sleipner input data........"
 
-        self.nx_start = 0
-        self.ny_start = 0
-        self.nz_start = 0
-
         if two_d == True:
-            nzi = 1
-        else:
-            nzi = self.nz
+            self.nz = 1
 
         count = 0
-        for i in range(self.nx_start, self.nx):
+        for i in range(0, self.nx):
             temparray = []
-            for j in range(self.ny-1, self.ny_start-1, -1):
+            for j in range(self.ny-1, -1, -1):
                 temparrayz = []
                 sand_count = 0
-                for k in range(self.nz_start, nzi):
+                for k in range(0, self.nz):
                     ind = self.e_cell_index(i, j, k)
                     eleme = self.get_element_chars(i, j, k)
                     if shale == True or e_cells[ind].getXPermeability() > 1.:
@@ -870,9 +854,23 @@ class T2InputGrid(object):
                         temparrayz.append(eleme)
                 temparray.append(temparrayz)
             self.el_array.append(temparray)
+
+        # quick debugging to make sure all elements were input
+        self.num_elements = count
+        check_element_length = len(self.el_array) * len(self.el_array[0]) * \
+                len(self.el_array[0][0])
+        if shale == True:
+            input_length = self.nx * self.ny * self.nz
+        else: 
+            input_length = self.nx * self.ny * 34
+        assert self.num_elements == check_element_length, \
+                "num_elements created does not match array dimensions"
+        assert self.num_elements == input_length, \
+                "num_elements created does not match input nx*ny*nz"
+
         print "GRID FILLING COMPLETE"
         print str(count) + " ELEMENTS CREATED"
-        print len(self.el_array), len(self.el_array[0]), len(self.el_array[0][0])
+        print "__________________________"
         return 0
 
     def write_eclipse_cell(self, e_cells, i, j, k,\
@@ -1173,25 +1171,22 @@ class T2InputGrid(object):
         print "MESH created with:"
         print "writing ELEMENT block of input data"
         g.write('ELEME\r\n')
-        if two_d == True:
-            nzi = 1
+        if shale == False:
+            nzi = 34
         else:
-            if shale == False:
-                nzi = 34
-            else:
-                nzi = self.nz
+            nzi = self.nz
         count = 0 
-        for i in range(0, self.nx - self.nx_start ):
-            for j in range(0, self.ny - self.ny_start ):
-                for k in range(0, nzi - self.nz_start):
+        for i in range(0, self.nx):
+            for j in range(0, self.ny):
+                for k in range(0, nzi):
                     eleme = self.el_array[i][j][k]
                     # if the cell is interior, writes it.
                     # interior check is below
                     # if not, adds it to the boundary group to be 
                     # written at the end
                     if boundary_type == 1 and \
-                            (i == 0 or i == (self.nx - self.nx_start - 1 ) or \
-                            j == 0 or j == (self.ny - self.ny_start - 1 )):
+                            (i == 0 or i == (self.nx - 1 ) or \
+                            j == 0 or j == (self.ny - 1 )):
                         self.boundary.append(eleme)
                     elif boundary_type == 1 and type1_source_cell == eleme:
                         print "YAY"
@@ -1227,28 +1222,22 @@ class T2InputGrid(object):
         print "ELEME: " + str(count) + " elements"
         print "ELEMENTS COMPLETE --------------- "
         print "Writing Connections.........."
-        if two_d == True:
-            nzi = 1
-        else:
-            if shale == False:
-                nzi = 34
-            else:
-                nzi = self.nz
+
         g.write('CONNE\r\n')
         count = 0 
-        for i in range(0, self.nx - self.nx_start ):
-            for j in range(0, self.ny - self.ny_start ):
-                for k in range(0, nzi - self.nz_start):
+        for i in range(0, self.nx ):
+            for j in range(0, self.ny ):
+                for k in range(0, nzi):
                     # z connection
-                    if k != nzi - self.nz_start -1:
+                    if k != nzi -1:
                         g, count = self.write_z_connection(g, count, \
                                 i, j, k, uniform)
                     # y connection
-                    if j != self.ny - self.ny_start -1:
+                    if j != self.ny -1:
                         g, count = self.write_y_connection(g, count, \
                                 i, j, k, two_d, uniform, e_cel )
                     # x connection
-                    if i != self.nx - self.nx_start -1: 
+                    if i != self.nx -1: 
                         g, count = self.write_x_connection(g, count, \
                                 i, j, k, two_d, uniform, e_cel )
 
@@ -1308,10 +1297,6 @@ class T2InputGrid(object):
             two_d = False, uniform = False, e_cells = 'uniform' ):
         """ need to incorporate z, inside this loop
         """ 
-        if two_d == True:
-            nzi = 1
-        else:
-            nzi = self.nz
         direc = 2  
         el1 =  self.el_array[i][j][k]
         el2 = self.el_array[i][j+1][k]
@@ -1354,10 +1339,6 @@ class T2InputGrid(object):
             two_d = True, uniform = False, e_cells = 'uniform' ):
         """ need to incorporate z, note, inside this loop
         """
-        if two_d == True:
-            nzi = 1
-        else:
-            nzi = self.nz
         direc = 1
         el1 =  self.el_array[i][j][k]
         el2 =  self.el_array[i+1][j][k]
@@ -1397,19 +1378,29 @@ class T2InputGrid(object):
         return g, count
 
     # write INCON file --------------------------------------------------------
-    def write_incon(self, porosity):
+    def write_incon(self, shale = True, porosity = []):
         print "Writing INCON FILE"
         h = open('INCON','w')
         h.write('INCON -- INITIAL CONDITIONS FOR ' + str(len(self.elements)) + \
             ' ELEMENTS AT TIME  .000000E+00\r\n')
-        for el in self.elements:
-            poro = '{: 15.8E}'.format(porosity)
-            h.write(el + 10 * ' '+ poro + '\r\n')
-            x1 =  format_float_incon(self.pres[el])
-            x2 =  format_float_incon(self.na_cl[el])
-            x3 =  format_float_incon(self.x_co2[el])
-            x4 =  format_float_incon(self.temp[el])
-            h.write( x1 + x2 + x3 + x4 + '\r\n')
+        if shale == False:
+            nzi = 34
+        else:
+            nzi = self.nz
+        for i in range(0, self.nx):
+            for j in range(0, self.ny):
+                for k in range(nzi):
+                    el = self.el_array[i][j][k]
+                    if porosity != []:
+                        poro = '{: 15.8E}'.format(porosity)
+                    else:
+                        poro = '{: 15.8E}'.format(self.poro[el])
+                    h.write(el + 10 * ' '+ poro + '\r\n')
+                    x1 =  format_float_incon(self.pres[el])
+                    x2 =  format_float_incon(self.na_cl[el])
+                    x3 =  format_float_incon(self.x_co2[el])
+                    x4 =  format_float_incon(self.temp[el])
+                    h.write( x1 + x2 + x3 + x4 + '\r\n')
         h.write('\r\n')
         h.write('\r\n')
         h.close()
@@ -1573,8 +1564,7 @@ class T2InputGrid(object):
         print "Scatter cells slice complete"
         return 0
 
-def plot_relperm_cap(rp_vals, cp_vals, fmt = 'png',\
-        rp = 'linear', cp = 'linear'):
+def plot_relperm_cap(rp_vals, cp_vals, fmt = 'png', rp = 'linear'):
 
     print "PLOTTING RELATIVE PERMEABILITY AND CAPILLARY PRESSURE CURVES"
     nvals = 100
@@ -1587,15 +1577,9 @@ def plot_relperm_cap(rp_vals, cp_vals, fmt = 'png',\
     krl = np.zeros(nvals)
     krg = np.zeros(nvals)
 
-    if cp == 'linear':
-        for i in range(len(sat)):
-            pcap[i] = cap_linear(sat[i], cp_vals)
-    elif cp == 'none':
-        for i in range(len(sat)):
-            pcap[i] = 0.
-    else:
-        for i in range(len(sat)):
-            pcap[i] = -cap_vangenuchten(sat[i], cp_vals)
+    for i in range(len(sat)):
+        pcap[i] = -cap_vangenuchten(sat[i], cp_vals)
+
     if rp == 'linear':
         for i in range(len(sat)):
             krl[i], krg[i] = rel_perms_linear(sat[i], rp_vals)
