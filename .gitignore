@@ -19,3 +19,6 @@ VESA_fault
 *LINEQ
 *TABLE
 *VERS
+u25_*
+sl_*
+*COFT

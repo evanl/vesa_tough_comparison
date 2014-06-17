@@ -7,14 +7,15 @@ import read_eclipse as re
 import eclipse_cells as ec
 from time import clock
 import string
+from subprocess import call
 
-def create_t2_input(sim_title, two_d = False, uniform = False,\
+def write_input_files(sim_title, two_d = False, uniform = False,\
         sleipner = False, hydro = False, hydro_directory = False,\
         num_steps = 11, days_per_step = 365.25, \
         edge_bc_type = 1, linear_rp = False,\
         no_cap = False, shale = True, tolerance = -7,\
-        type1_source = False, sat_frac = 0.8,\
-        write_mesh = True):
+        type1_source = False, sat_frac = 0.8, \
+        isothermal = True, co2_enthalpy = 50.):
     """ Creates a TOUGH2 injection simulation
     """
     print 'CREATING TOUGH2 INPUT FILE'
@@ -50,8 +51,6 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
     f.write('*'+ sim_title +'*\n')
 
     #input parameters
-    name = 'sands'
-    sand_density = 2600.
     if sleipner == True:
         porosity = 0.35 
         xperm = 2.e-12
@@ -86,10 +85,12 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
 
     write_separator(f, 'ROCKS')
     # SAND
+    name = 'sands'
+    sand_density = 2600.
     write_rocks(f, name, sand_density, porosity, xperm, yperm, zperm, \
         cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
         rel_perm = rel_perm)
-    # SHALE STUFFFFFFFFFFF
+    # SHALE 
     name = 'shale'
     shale_density = 2600.
     porosity = 0.35
@@ -104,7 +105,7 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
     # Cavanagh test case
     # output_day_list.append(365.25 * 50)
 
-    write_multi(f)
+    write_multi(f, isothermal = isothermal)
     write_selec(f)
     write_start(f)
     write_param(f, tmax = output_day_list[-1] * 24 * 3600,\
@@ -130,10 +131,12 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
 
     if type1_source == True:
         type1_source_cell = eleme
-        write_gener(f, eleme, phase = phase, mass_rate = 0.0 )
+        write_gener(f, eleme, phase = phase, mass_rate = 0.0,\
+                co2_enthalpy = co2_enthalpy, isothermal = isothermal)
     else:
         type1_source_cell = 'none'
-        write_gener(f, eleme, phase = phase, mass_rate = mass_rate)
+        write_gener(f, eleme, phase = phase, mass_rate = mass_rate, \
+                co2_enthalpy = co2_enthalpy, isothermal = isothermal)
                 #, kg_inflow = kgInflow, times = output_day_list )
 
     write_times(f, output_day_list)
@@ -163,7 +166,7 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
     else:
         brine_density = 1019.35
         temp = 32
-        if write_mesh == True:
+        if hydro_directory == False:
             tg.fill_eclipse_grid(e_cel, temperature = temp, \
                     density = brine_density, two_d = two_d, \
                     solubility = solubility, shale = shale)
@@ -171,8 +174,9 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
                     boundary_type = edge_bc_type, shale = shale,\
                     type1_source_cell = type1_source_cell)
         else:
-            hdm = hydro_directory + '_dir/MESH'
-            call (["cp", hdm, './'])
+            mesh_string = hydro_directory + '_dir/MESH'
+            call (["mv", mesh_string, './OLDMESH'])
+            clean_oldmesh_file()
 
 
     if hydro_directory == False:
@@ -183,9 +187,10 @@ def create_t2_input(sim_title, two_d = False, uniform = False,\
 
     print "Write Time"
     print clock() - t_read
-    tg.plot_cells(show = False, two_d = two_d)
-    tg.plot_cells_slice(direc = 2, ind = 0, show = False)
-    print "create_t2_input COMPLETE"
+    if hydro == False:
+        tg.plot_cells(show = False, two_d = two_d)
+        tg.plot_cells_slice(direc = 2, ind = 0, show = False)
+    print "write_input_files COMPLETE"
     return tg
 
 def write_separator(f, keyword):
@@ -250,7 +255,27 @@ def write_rocks(f, name, density, porosity, xperm, yperm, zperm, \
     cap = 'vanGenuchten', rel_perm = 'vanGenuchten',\
     end = False):
     """
+        writes a ROCKS entry with the following properties
+        name: Choose a name of the rock i.e. sand, shale
+        density: rock grain density [kg/m^3]
+        porosity: default porosity if no porosity is specified in INCON
+        xperm: x-permeability [m^2]
+        yperm: y-permeability [m^2]
+        zperm: z-permeability [m^2]
+        thermk: formation thermal conductivity [W/(m degC)]
+        specheat: rock specific heat [J/(kg degC)]
+            NOTE: values greater than 10^4 will be ignored.
+        cp_vals: list of values for capillary pressure functions.
+            NOTE In this case, only van-genuchten-mualem models are 
+            used for capillary pressure. 
+        rp_vals: list of values for relative permeability functions
+        cap: string that specifies the type of capillary pressure function
+        rel_perm: value that specifies the type of relative permeability curves
+        end: if this is the final rock type used, set end = True
     """
+
+    # NOTE, the 2 that is hard-coded here means that two materials will be
+    # read, if only one is used, change this value to 1
     f.write(name + '    2')
     d = '{: 10.0f}'.format(density)
     p = '{: 10.2f}'.format(porosity)
@@ -289,12 +314,12 @@ def write_rocks(f, name, density, porosity, xperm, yperm, zperm, \
     if end == True:
         f.write('\r\n')
     return f
-def write_multi(f, mode = 'isothermal'):
-    if mode == 'isothermal':
+def write_multi(f, isothermal = True):
+    if isothermal == True:
         write_separator(f, 'MULTI')
         f.write('    3    3    3    6\r\n')
     else:
-        write_separator(f,'MULTI')
+        write_separator(f, 'MULTI')
         f.write('    3    4    3    6\r\n')
     return f
 
@@ -310,26 +335,38 @@ def write_selec(f):
 def write_start(f):
     write_separator(f,'START')
     write_separator(f,'MOP')
-
     return f
 
-def write_param(f, init_check = False, pres = 110.5e5, salt = 3.2e-2, \
-        co2 = 0.0, temp = 37., \
-    tmax = 63.1152e6, tolexp = -7):
+def write_param(f, pres = 110.5e5, salt = 3.2e-2, \
+        co2 = 0.0, temp = 32., maxtstep = 9500, max_cpu_seconds = 9999, \
+    tmax = 63.1152e6, tolexp = -5):
+    """
+        Writes the PARAM block of the input file
+        Default parameters for an element (grid cell) if not specified in INCON
+            pres: pressure 
+            salt: dissolved NaCl concentration
+            co2: CO2 dissolved fraction
+            temp: temperature
+        maxtstep: maximum number of timesteps
+        max_cpu_seconds: maximum number of cup seconds
+        tmax: end time of simulation
+        tolexp: convergence criterion relative error exponent, default = 10^-5
+            example: 10^-5 = 10^tolexp
+    """
     write_separator(f, 'PARAM')
-
     # line 1
-    maxtstep = '9500'
-    
-    f.write('    ' + maxtstep + 2 * ' '   + '  99991000')
-    if init_check == True:
-        f.write(' 09000000 ')
-    else :
-        f.write(' 00000000 ')
-    f.write(' 4    3   \r\n')
+
+    tstep = '{:4d}'.format(maxtstep)
+    f.write(4 * ' ' + tstep + 4 * ' ')
+    # maximum duration in CPU seconds
+    f.write('{:4d}'.format(max_cpu_seconds))
+    # writes the MOP parameters, see the TOUGH2 manual for details
+    # on what each of them are.
+    #   MOP: 123456789*123456789*1234
+    f.write('1000 00000000  4    3   \r\n')
 
     # line 2
-    f.write('          ')
+    f.write(10 * ' ')
     
     b = '{: 10.5e}'.format(tmax)
     l = list(b)
@@ -338,12 +375,18 @@ def write_param(f, init_check = False, pres = 110.5e5, salt = 3.2e-2, \
     del l[-2]
     c = ''.join(l)
     f.write(c)
+
+    # length of time steps in seconds
+    # this seems to be an initial time step, and is reduced if the 
+    # system fails to converge. 
     f.write('     0.8e6')
-    #f.write('       -1.')
-    #                         gravity
+
+    # gravity
     f.write(20 * ' ' + '      9.81\r\n')
-    #f.write('      1.e2\r\n')
+
+    # convergence criterion relative error
     tolstr = '{:03d}'.format(tolexp)
+    # convergence criterion maximum error
     f.write('    1.E' + tolstr + '    1.E-01\r\n')
 
     # default initial conditions
@@ -358,24 +401,52 @@ def write_param(f, init_check = False, pres = 110.5e5, salt = 3.2e-2, \
     f.write('\r\n')
     return f
 
-def write_solvr(f, linsolve_int, preprocess_int, tolexp = -7):
+def write_solvr(f, linsolve_int, preprocess_int, closur = -7):
+    """
+        writes the SOLVR block for solving equations
+        linsolve_int: integer [2,6] that solves the 
+            system. 
+            2: biconjugate gradient
+            3: Lanczos-type biconjugate gradient
+            4: generalized minimum residual solver
+            5: stabilized biconjugate gradient solver
+            6: Direct solver 
+        preprocess_int: preprocessing integer, 
+            0: no preprocessing
+            1: replace zeros on main diagonal with small constant
+            2: make linear combinations to achieve nonzeros on main diagonal
+            3: normalize equations, followed by 2
+            4:  details in manual
+        closur: closure criterion for CG iterations
+    """
     write_separator(f,'SOLVR')
-    if tolexp < -12 or tolexp > -6:
-        print "tolexp must be between -12 and -6"
+    if closur < -12 or closur > -6:
+        print "closur must be between -12 and -6"
         return 1
-    tolstr = '{:03d}'.format(tolexp)
-    if linsolve_int < 2 or linsolve_int > 6:
-        print "pick a correct linear solver"
-        return 1
+    tolstr = '{:03d}'.format(closur)
+    # the O0 in this line says no preconditioner will be used.
+    # 1.0e-1 is the default value for RITMAX, details in manual
+    # closur: convergence criterion for 
     f.write(str(linsolve_int) + \
             '  Z'+ str(preprocess_int) + \
             '   O0    1.0e-1   1.0e' + tolstr +'\r\n')
     return f
 
 def write_gener(f, eleme, phase = 'brine', mass_rate = .1585, \
-        kg_inflow = [], times = []):
+        kg_inflow = [], times = [], co2_enthalpy = 50.,\
+        isothermal = True):
     """
-            So far only writes one constant rate. Need to fix later
+        Writes GENER file
+            So far, has only been used for the case when the 
+            kg_inflow list is not given, thus implying a 
+            constant injection rate
+        mass_rate: injection rate of component in kg/s
+        phase: either 'co2' or 'brine'
+        co2_enthalpy: for nonisothermal cases
+        isothermal: True or False
+        kg_inflow: list of mass inflow rates ending at the corresponding
+            index in times
+        times: list of times that end variable injection periods.
     """
     write_separator(f,'GENER')
     if phase =='co2':
@@ -385,7 +456,11 @@ def write_gener(f, eleme, phase = 'brine', mass_rate = .1585, \
 
     if kg_inflow == [] :
         mr = '{: 10.4f}'.format(mass_rate)
-        f.write(eleme + 'inj 1'+ 19 * ' ' + '1' + 5 * ' ' + p  + mr  + '\r\n')
+        if isothermal == True:
+            se = ''
+        else:
+            se = '{: 10.3e}'.format(co2_enthalpy)
+        f.write(eleme + 'inj 1'+ 19*' ' + '1' + 5 * ' ' + p + mr + se + '\r\n')
     else: 
         if len(kg_inflow) != len(times):
             print "mass rate and time arrays are not the same length"
@@ -434,9 +509,7 @@ def write_gener(f, eleme, phase = 'brine', mass_rate = .1585, \
         f.write('\r\n')
 
         # write F3: specific enthalpy
-        # specific enthalpy of c02 chosen to be 50.
-        # shouldn't matter since it's isothermal.
-        specific_enthalpy = '{: 16.1e}'.format(50.)
+        specific_enthalpy = '{: 16.1e}'.format(co2_enthalpy)
         se = list(specific_enthalpy)
         del se[-3]
         specific_enthalpy = ''.join(se)
@@ -477,6 +550,9 @@ def write_foft(f):
     return f
 
 def write_coft(f, sleipner):
+    """
+        Gets output from a specific connection
+    """
     write_separator(f, 'COFT ')
     if sleipner == True:
         #f.write('bH732cH732\r\n')
@@ -488,11 +564,17 @@ def write_coft(f, sleipner):
     return f
 
 def write_goft(f):
+    """
+        What is the generation rate output?
+    """
     write_separator(f, 'GOFT ')
     f.write('\r\n')
     return f
 
 def write_meshmaker(f , rect = True, flat = True, nx = 65, ny = 119, nz = 1):
+    """
+        uses internal MESHMAKER routine.
+    """
     write_separator(f, 'MESHMAKER')
     f.write('XYZ\r\n')
     # degrees to rotate domain
@@ -552,6 +634,9 @@ def format_float_mesh(val):
     return s 
 
 def format_float_rocks(val):
+    """
+        formats floats to fit well into the ROCKS block.
+    """
     return '{: .3e}'.format(val)
 
 def format_float_incon(val):
@@ -618,10 +703,14 @@ class T2InputGrid(object):
         self.vol = {}
         - Dictionary that returns the volume  of an element 
 
-        self.area = {}
-        - Dictionary that returns the thermal contact area of an element 
-        - NOTE: This is not used in isothermal mode and is hardcoded
-          to be zero. This will need to be changed for nonisothermal simulations
+        self.ahtx = {}
+        - Dictionary that returns the interface area for heat exchange 
+          between semi infinite confining beds.
+        - this parameter is auto-generated by the MESHMAKER routine internally
+          in TOUGH2 and is generated in the same way here.
+          The MESHMAKER routine, for a radial injection problem, uses the 
+          relationship vol/ahtx = 50. 
+          The same relationship is specified in the generation routine below.
         
         self.pres = {}
         - Dictionary that returns the fluid pressure of an element 
@@ -653,7 +742,7 @@ class T2InputGrid(object):
         self.corners = {}
         self.mat = {}
         self.vol = {}
-        self.area = {}
+        self.ahtx = {}
         self.pres = {}
         self.na_cl = {}
         self.x_co2 = {}
@@ -780,7 +869,9 @@ class T2InputGrid(object):
                     self.y[eleme] = ylocal
                     self.z[eleme] = zlocal
                     self.vol[eleme] = (dz * dy * dx)
-                    self.area[eleme] = dy * dx
+                    # this thermal contact area was specified based on the 
+                    # MESHMAKER routine in ECO2N
+                    self.ahtx[eleme] = (dz * dy * dx) / 50.
                     self.pres[eleme] = -zlocal * density * 10.0
                     self.na_cl[eleme] = 3.2e-2
                     self.x_co2[eleme] = solubility_limit
@@ -794,7 +885,7 @@ class T2InputGrid(object):
                     self.mat[eleme] = 'sands'
 
                     vw = format_float_mesh(self.vol[eleme])
-                    aw = format_float_mesh(self.area[eleme])
+                    aw = format_float_mesh(self.ahtx[eleme])
                     xw = format_float_mesh(self.x[eleme])
                     yw = format_float_mesh(self.y[eleme])
                     zw = format_float_mesh(self.z[eleme])
@@ -944,8 +1035,9 @@ class T2InputGrid(object):
         pressure = -z * gradient * density
         self.pres[eleme] = pressure
 
-        # TODO must have physical nonzero value for nonisothermal mode
-        self.area[eleme] = 0.0
+        # This thermal contact area is specified based on the internal
+        # generation routines in the MESHMAKER capabilities of TOUGH2
+        self.ahtx[eleme] = self.vol[eleme] / 50.
         self.na_cl[eleme] = 3.2e-2
         self.x_co2[eleme] = solubility
         self.temp[eleme] = temperature
@@ -1072,6 +1164,9 @@ class T2InputGrid(object):
         return area
 
     def get_area_side(self, x1, x2, y1, y2, y3, y4):
+        """
+            gets the area of a polygon using the trapezoid rule
+        """
         h = x2 - x1
         b1 = y4 - y2
         b2 = y3 - y1
@@ -1195,7 +1290,7 @@ class T2InputGrid(object):
                         self.boundary.append(eleme)
                     else: 
                         vw = format_float_mesh(self.vol[eleme])
-                        aw = format_float_mesh(self.area[eleme])
+                        aw = format_float_mesh(self.ahtx[eleme])
                         xw = format_float_mesh(self.x[eleme])
                         yw = format_float_mesh(self.y[eleme])
                         zw = format_float_mesh(self.z[eleme])
@@ -1209,7 +1304,7 @@ class T2InputGrid(object):
 
         for el in self.boundary:
             vw = format_float_mesh(self.vol[el])
-            aw = format_float_mesh(self.area[el])
+            aw = format_float_mesh(self.ahtx[el])
             xw = format_float_mesh(self.x[el])
             yw = format_float_mesh(self.y[el])
             zw = format_float_mesh(self.z[el])
@@ -1377,7 +1472,6 @@ class T2InputGrid(object):
              
         return g, count
 
-    # write INCON file --------------------------------------------------------
     def write_incon(self, shale = True, porosity = []):
         print "Writing INCON FILE"
         h = open('INCON','w')
@@ -1448,7 +1542,7 @@ class T2InputGrid(object):
         print "INCON from SAVE complete"
         return 0
     
-    # Plotting routines ------------------------------------------------------
+    # grid Plotting routines ------------------------------------------------------
     def plot_cells(self, show = True, two_d = False):
         print " Creating scatter plot of all cells."
         x = []
@@ -1563,6 +1657,7 @@ class T2InputGrid(object):
         plt.close()
         print "Scatter cells slice complete"
         return 0
+    # end T2InputGrid class
 
 def plot_relperm_cap(rp_vals, cp_vals, fmt = 'png', rp = 'linear'):
 
@@ -1615,7 +1710,7 @@ def plot_relperm_cap(rp_vals, cp_vals, fmt = 'png', rp = 'linear'):
 
 def cap_linear(s, cp_vals):
     if cp_vals[2] < cp_vals[1]:
-        print 'LINEAR CAPILLARY PRESSURE BOUND DONT MAKE NO SENSE'
+        print 'cp_vals[2] must be greater than cp_vals[1]'
         return 1
     if s <= cp_vals[1]:
         pcap = -cp_vals[0]
@@ -1687,7 +1782,32 @@ def rel_perms_vangenuchten(sl, rp_vals):
 
     return krl, krg
 
+def clean_oldmesh_file():
+    """ takes the mesh file from a previous simulation and removes the excess
+    text
+        The old meshfile must be called OLDMESH
+    """
+    old = open('OLDMESH', 'r')
+    new = open('MESH', 'w')
+    line = old.readline()
+    s = line.split()
+    while s != []: 
+        new.write(line)
+        line = old.readline()
+        s = line.split()
+    new.write(line)
+    line = old.readline()
+    s = line.split()
+    while s[0] != '+++':
+        new.write(line)
+        line = old.readline()
+        s = line.split()
+    new.write('\r\n')
+    old.close()
+    new.close()
+
 if __name__ == '__main__':
+    # tests the initialization of an object
     nx = 65
     ny = 119
     nz = 43

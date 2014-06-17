@@ -476,30 +476,24 @@ class T2Timestep(object):
         self.plot_grid = vals
         return 0
 
-    def format_plot_grid(self, grid, axis, sleipner, section, shale = False):
+    def format_plot_grid(self, grid, axis, sleipner, shale = False):
         """ spits out 3 numpy arrays"""
         if axis == 1:
             nxp = len(grid.x_vals)
             if sleipner == True:
-                if section == True:
-                    nyp = 5
+                if shale == True:
+                    nyp = 43
                 else:
-                    if shale == True:
-                        nyp = 43
-                    else:
-                        nyp = 34
+                    nyp = 34
             else:
                 nyp = len(grid.z_vals)
         elif axis == 2:
             nxp = len(grid.y_vals)
             if sleipner == True:
-                if section == True:
-                    nyp = 5
+                if shale == True:
+                    nyp = 43
                 else:
-                    if shale == True:
-                        nyp = 43
-                    else:
-                        nyp = 34
+                    nyp = 34
             else:
                 nyp = len(grid.z_vals)
         elif axis == 3:
@@ -523,13 +517,12 @@ class T2Timestep(object):
         return xpl, ypl, val
 
     def plot_planar_timestep(self, grid, axis, index, valtype, \
-            name = 'test',fmt='png', sleipner = True, \
-            section = False, shale = True):
+            name = 'test',fmt='png', sleipner = True, shale = True):
         valstr = "Valtype = " + str(valtype) + '\n'
         axstr = "Axis =  " + str(axis) + '\n'
         indstr = "Index = " + str(index) 
         print "Plotting Planar Timestep: " + '\n' + valstr + axstr + indstr
-        xpl, ypl, val = self.format_plot_grid(grid, axis, sleipner, section, shale)
+        xpl, ypl, val = self.format_plot_grid(grid, axis, sleipner, shale)
         font = { 'size' : '16'}
         matplotlib.rc('font', **font)
         f = plt.figure(num=None, dpi=480, facecolor= 'w',\
@@ -731,7 +724,7 @@ def plot_incon_change_vs_index(grid, time_steps, \
     return 0
 
 def plot_planar_contours(grid, time_steps, sim_title, fmt='png',\
-        two_d = True, sleipner = True, section = False, shale = True,\
+        two_d = True, sleipner = True, shale = True,\
         axis = 3,\
         i_in = False, j_in = False, k_in = False):
     """ if axis is 3, standard 2d contour plots will be generated with 
@@ -761,21 +754,21 @@ def plot_planar_contours(grid, time_steps, sim_title, fmt='png',\
         time_steps[i].plot_planar_timestep(grid, axis = axis, index = index,\
                 valtype = 'delta_p',\
                 name = sim_title, fmt = fmt, sleipner = sleipner,\
-                section = section, shale = shale)
+                shale = shale)
         # create pressure contours
         time_steps[i].make_plot_grid(grid, axis = axis, index = index, \
                 valtype = 'pressure')
         time_steps[i].plot_planar_timestep(grid, axis = axis, index = index, \
                 valtype = 'pressure',\
                 name = sim_title, fmt = fmt, sleipner = sleipner,\
-                section = section, shale = shale)
+                shale = shale)
         # create saturation
         time_steps[i].make_plot_grid(grid, axis = axis, index = index, \
                 valtype = 'saturation')
         time_steps[i].plot_planar_timestep(grid, axis = axis, index = index,\
                 valtype = 'saturation',\
                 name = sim_title, fmt = fmt, sleipner = sleipner,\
-                section = section, shale = shale)
+                shale = shale)
     return 0
 
 def check_3d_hydro_pressure(grid, time_steps):

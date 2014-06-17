@@ -14,7 +14,7 @@ def process_t2_output(sim_title, parallel = False, split = 0,\
     grid.read_mesh()
 
     # number of timesteps from TOUGH2 output file.
-    num_outputs = 1
+    num_outputs = 24
 
     # read the file[s] for the timestep data
     if parallel == True:
@@ -51,10 +51,9 @@ if __name__ == '__main__':
     if len(sys.argv) != 2:
         sys.exit( "Please specify a simulation title")
     sim_title = sys.argv[1]
-    hydro = True
+    hydro = False
     two_d = False
-    sleipner = True
-    section = False
+    sleipner = False
     shale = False
     parallel = False
     split = 0
@@ -79,11 +78,6 @@ if __name__ == '__main__':
                 k_layer = 3.
             xind = 32
             yind = 77
-            if section == True:
-                eleme = 'AE717'
-                xind = 17
-                yind = 47
-                k_layer = 26
         else:
             eleme = 'yB212'
             k_layer = 0
@@ -99,7 +93,7 @@ if __name__ == '__main__':
 
     for basis in range(1,4):
         ot2f.plot_planar_contours(grid, time_steps, sim_title, fmt, \
-                two_d = two_d, sleipner = sleipner, section = section,\
+                two_d = two_d, sleipner = sleipner, \
                 shale = shale, axis = basis,\
                 i_in = xind, j_in = yind, k_in = k_layer)
 
@@ -116,8 +110,8 @@ if __name__ == '__main__':
 
     sim_title_dir = sim_title + '_dir'
     call(["mkdir",sim_title_dir])
-    movestring = "mv " + "*" + fmt +" " + sim_title_dir
-    call(movestring, shell=True)
+    call("mv " + "*" + fmt + " " + sim_title_dir, shell=True)
+    call("mv " + "*" + ".pdf" + " " + sim_title_dir, shell=True)
     if parallel == False:
         call (["mv",sim_title,sim_title_dir])
         call (["mv",sim_title+'.out',sim_title_dir])
