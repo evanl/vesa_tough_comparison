@@ -6,15 +6,13 @@ import matplotlib.pyplot as plt
 import t2_output_funcs as ot2f
 
 def process_t2_output(sim_title, parallel = False, split = 0,\
-        double_balance = False):
+        double_balance = False, num_outputs = 1):
     # this must be changed to reflect the input data
     # create an output grid object
     grid = ot2f.T2grid()
     # read the coordinate data from MESH
     grid.read_mesh()
 
-    # number of timesteps from TOUGH2 output file.
-    num_outputs = 24
 
     # read the file[s] for the timestep data
     if parallel == True:
@@ -58,9 +56,10 @@ if __name__ == '__main__':
     parallel = False
     split = 0
     double_balance = True
-    # creates a T2Grid object and a list of T2Timestep objects
+    # number of timesteps from TOUGH2 output file.
+    num_outputs = 5
     grid, time_steps = process_t2_output(sim_title, parallel, split = split,\
-            double_balance = double_balance)
+            double_balance = double_balance, num_outputs = num_outputs)
     # choose format for plots.
     fmt = 'png'
     if two_d == True:

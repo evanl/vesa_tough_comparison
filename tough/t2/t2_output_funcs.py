@@ -558,9 +558,11 @@ class T2Timestep(object):
             CS = ax.contourf(xpl,ypl,val) 
             CB = plt.colorbar(CS, shrink = 0.8, extend = 'both')
             CB.set_label("Pressure Difference P - Po [Pa]")
-            #f.suptitle("T2slice, simulation: "+ name + ": + " + \
-                    #"\n Pressure Difference in  " + title_time+\
-                    #axstr + indstr)
+            f.suptitle("Time = " + title_time)
+        elif valtype == 'temperature':
+            CS = ax.contourf(xpl,ypl,val) 
+            CB = plt.colorbar(CS, shrink = 0.8, extend = 'both')
+            CB.set_label("Temperature [C]")
             f.suptitle("Time = " + title_time)
         else: 
             print "pressure or saturation ? "
@@ -769,6 +771,14 @@ def plot_planar_contours(grid, time_steps, sim_title, fmt='png',\
                 valtype = 'saturation',\
                 name = sim_title, fmt = fmt, sleipner = sleipner,\
                 shale = shale)
+        # create temperature
+        time_steps[i].make_plot_grid(grid, axis = axis, index = index, \
+                valtype = 'temperature')
+        time_steps[i].plot_planar_timestep(grid, axis = axis, index = index,\
+                valtype = 'temperature',\
+                name = sim_title, fmt = fmt, sleipner = sleipner,\
+                shale = shale)
+    return 0
     return 0
 
 def check_3d_hydro_pressure(grid, time_steps):

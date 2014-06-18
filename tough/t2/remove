@@ -1,6 +1,7 @@
 #!/bin/bash
 
 rm GOFT LINEQ FOFT SAVE TABLE VERS COFT GENER INCON MESH rho_visc checkijk
+rm OLDMESH
 rm *.out
 rm *.png
 rm *.pdf

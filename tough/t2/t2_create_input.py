@@ -48,7 +48,7 @@ if __name__ == '__main__':
     # If isothermal == True, the heat equation is not solved and 
     # the co2_enthalpy (specific enthalpy) is not called by TOUGH2
     isothermal = False
-    co2_enthalpy = 293.e3 #J/kg
+    co2_enthalpy = 412.e3 #J/kg
 
     # If True, ignores flow rate and fixes pressure and saturation
     # with an apparent CO2 saturation of sat_frac
@@ -79,7 +79,7 @@ if __name__ == '__main__':
 
     # specifies the number of output timesteps, and how many days are 
     # simulated in between each output.
-    num_timesteps = 24
+    num_timesteps = 5
     days_per_timestep = 15
 
     t2inputgrid = it2f.write_input_files(sim_title, two_d = two_d, \

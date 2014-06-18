@@ -90,6 +90,11 @@ def write_input_files(sim_title, two_d = False, uniform = False,\
     write_rocks(f, name, sand_density, porosity, xperm, yperm, zperm, \
         cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
         rel_perm = rel_perm)
+    name = 'well '
+    sand_density = 2600.e40
+    write_rocks(f, name, sand_density, porosity, xperm, yperm, zperm, \
+        cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
+        rel_perm = rel_perm)
     # SHALE 
     name = 'shale'
     shale_density = 2600.
@@ -154,11 +159,9 @@ def write_input_files(sim_title, two_d = False, uniform = False,\
 
     if uniform == True:
         brine_density = 1016.4
-        altered_cell = 'eA2 2'
-        altered_cell = 'none'
+        inj_cell = 'yB212'
         tg.fill_uniform_grid(porosity, dx, dy, dz, density = brine_density,\
-                solubility_limit = solubility,\
-                altered_cell = altered_cell)
+                solubility_limit = solubility, inj_cell = inj_cell)
         e_cel = 'uniform'
         tg.write_mesh(e_cel, two_d = two_d, uniform = uniform,\
                 boundary_type = edge_bc_type, shale = shale,\
@@ -277,7 +280,10 @@ def write_rocks(f, name, density, porosity, xperm, yperm, zperm, \
     # NOTE, the 2 that is hard-coded here means that two materials will be
     # read, if only one is used, change this value to 1
     f.write(name + '    2')
-    d = '{: 10.0f}'.format(density)
+    if density < 10.e7:
+        d = '{: 10.0f}'.format(density)
+    else:
+        d = '{: 10.1e}'.format(density)
     p = '{: 10.2f}'.format(porosity)
     xp = '{: 10.2e}'.format(xperm)
     yp = '{: 10.2e}'.format(yperm)
@@ -840,7 +846,8 @@ class T2InputGrid(object):
             return el
 
     def fill_uniform_grid(self, porosity, dx, dy, dz, density = 1000.,\
-            solubility_limit = 0.454104e-3, altered_cell = 'none'):
+            solubility_limit = 0.454104e-3, inj_cell = 'none',\
+            altered_cell = 'none'):
         # populates grid 
         g = open('MESH', 'w')
         print "MESH created with:"
@@ -850,19 +857,12 @@ class T2InputGrid(object):
                 temparrayz = []
                 for k in range(self.nz):
                     eleme = self.get_element_chars(i, j, k)
-                    if i == 12:
-                        if j == 12:
-                            if k == 12:
-                                print "INJECTION cell"
-                                print eleme
                     self.elements.append(eleme)
 
                     xlocal = (dx / 2 + dx * i )
                     ylocal = (dy / 2 + dy * j ) 
                     zlocal = -(dz / 2 + dz * k ) - 859.5
                     if altered_cell != 'none':
-                        #if eleme == 'cA2 3' or eleme == 'cA2 1'\
-                                #or eleme == 'cA3 2' or eleme == 'cA1 2':
                         if eleme == altered_cell:
                             zlocal = zlocal + 5.
                     self.x[eleme] = xlocal
@@ -878,11 +878,12 @@ class T2InputGrid(object):
                     self.temp[eleme] = 32.
                     temparrayz.append(eleme)
 
-                    #if k ==1 :
-                        #self.mat[eleme] = 'sands'
-                    #else: 
-                        #self.mat[eleme] = 'shale'
-                    self.mat[eleme] = 'sands'
+                    if eleme == inj_cell:
+                        self.mat[eleme] = 'well '
+                        print "INJECTION cell"
+                        print eleme
+                    else:
+                        self.mat[eleme] = 'sands'
 
                     vw = format_float_mesh(self.vol[eleme])
                     aw = format_float_mesh(self.ahtx[eleme])
@@ -904,7 +905,7 @@ class T2InputGrid(object):
 
     def fill_eclipse_grid(self, e_cells , temperature = 37., density = 1000.,\
             two_d = False,  gradient = 10 , solubility = 0.474e-1, \
-            shale = True):
+            shale = True, inj_cell = 'JH732'):
         """Fills the 3d grid with x, y, and z
         'gradient' specifies the hydrostatic gradient. [MPa/km]
 
@@ -934,13 +935,17 @@ class T2InputGrid(object):
                 for k in range(0, self.nz):
                     ind = self.e_cell_index(i, j, k)
                     eleme = self.get_element_chars(i, j, k)
+                    if eleme == inj_cell:
+                        injector = True
+                    else: 
+                        injector = False
                     if shale == True or e_cells[ind].getXPermeability() > 1.:
                         if e_cells[ind].getXPermeability() > 1.:
                             sand_count +=1
                         count +=1
                         self.elements.append(eleme)
                         self.write_eclipse_cell(e_cells, i, j, k,\
-                                temperature, density,\
+                                temperature, density, injector ,\
                                 two_d, gradient, solubility)
                         temparrayz.append(eleme)
                 temparray.append(temparrayz)
@@ -965,7 +970,7 @@ class T2InputGrid(object):
         return 0
 
     def write_eclipse_cell(self, e_cells, i, j, k,\
-            temperature = 37., density = 1000.,\
+            temperature = 37., density = 1000., injector = False,\
             two_d = False,  gradient = 10 , solubility = 0.474e-1):
         """ converts the corners from the eclipse_cell order into the TOUGH2 input
             order for convenience in doing volume calculations
@@ -976,6 +981,8 @@ class T2InputGrid(object):
 
         if e_cells[eclipse_index].getXPermeability() > 1 or two_d == True:
             self.mat[eleme] = 'sands'
+        elif injector == True:
+            self.mat[eleme] = 'well '
         else:
             self.mat[eleme] = 'shale'
 
