@@ -1,4 +1,5 @@
 #Author - Evan Leister
+from subprocess import call
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
@@ -6,6 +7,44 @@ import time
 import string
 from operator import itemgetter
 import CO2Properties_1_0 as co2
+
+def process_t2_output(sim_title, parallel = False, split = 0,\
+        double_balance = False, num_outputs = 1):
+
+    grid = T2grid()
+
+    # read the coordinate data from MESH
+    grid.read_mesh()
+
+    # read the file[s] for the timestep data
+    if parallel == True:
+        fname ='OUTPUT_DATA_' + sim_title
+        gname = 'OUTPUT_' + sim_title
+        print "fname " + fname
+        print "gname " + gname
+        f = open(fname)
+        g = open(gname)
+        grid.read_initial_mass(g)
+    else:
+        f = open(sim_title + '.out')
+        g = open(sim_title) # g is not called in this case. 
+        grid.read_initial_mass(f)
+    time_steps = []
+    for i in range(num_outputs):
+        if split !=0 and i > 7:
+            year_add = 8
+        else:
+            year_add = 0
+        timetest = T2Timestep()
+        double_read = double_balance
+        timetest.readOutput(f, g, grid, parallel = parallel, \
+                year_add = year_add, double_read = double_read)
+        timetest.get_co2_density_viscosity()
+        time_steps.append(timetest)
+    f.close()
+    g.close()
+
+    return grid, time_steps
 
 class T2grid(object):
     """ This class represents an overarching structure to post-process a 
@@ -31,6 +70,8 @@ class T2grid(object):
         self.aq_mass_nacl = 0.
 
     def get_initial_pressure(self):
+        """ Opens the INCON file to get the initial pressure values
+        """
         initial_pressure_dict = {}
         f = open('INCON','r')
         for i in range(2):
@@ -83,7 +124,7 @@ class T2grid(object):
         self.make_x_list()
         self.make_y_list()
         self.make_z_list()
-        self.make_index_lists()
+        self.make_index_dictionaries()
         return 0
 
     def make_x_list(self):
@@ -134,7 +175,10 @@ class T2grid(object):
         print "z has " + str(len(self.z_vals)) + " unique values"
         return 0
 
-    def make_index_lists(self):
+    def make_index_dictionaries(self):
+        """ make dictionaries that return the i-j-k index 
+            for a given element
+        """
         i_map, j_map, k_map = get_index_maps()
         for el in self.elements:
             l = list(el)
@@ -180,7 +224,52 @@ class T2grid(object):
 
 class T2Timestep(object):
     """ 
-    this class stores a grid for a given set of time output
+        This class stores a grid for a given set of time output, 
+        each timestep object is stored in a list of timesteps.
+
+        self.step_time 
+            The time for this timestep.
+        self.rate 
+            The injection rate.
+        self.mass_injected 
+            How much mass is supposedly injected into the domain.
+
+        self.aq_mass_total 
+            The total mass in the aqueous phase.
+        self.aq_mass_water 
+            The mass of water in the aqueous phase.
+        self.aq_mass_co2 
+            The mass of CO2 in the aqueous phase.
+        self.aq_mass_nacl 
+            The mass of salt in the aqueous phase.
+        self.gas_mass_total 
+            The total mass in the gaseous phase
+        self.gas_mass_water 
+            The mass of water in the gaseous phase
+        self.gas_mass_co2 
+            The mass of CO2 in the gaseous phase
+        self.gas_mass_nacl 
+            The mass of salt in the gaseous phase
+
+        self.elements 
+            A list of all elements
+        self.pressure 
+            A dictionary containing the pressure for a given element
+        self.pres_diff 
+            A dictionary containing the pressure change 
+            (delta_p = pressure - p_initial) for a given element
+        self.temperature 
+            A dictionary containing the temperature of a given element
+        self.sat_gas 
+            A dictionary containing the gas saturation of a given element
+        self.x_co2 
+            A dictionary containing the dissolved CO2 concentration 
+            of a given element
+        self.rho_gas 
+            A dictionary containing the gas density of a given element
+        self.plot_grid 
+            A 2d list used to plot contours for different values
+            A dictionary containing the gas density of a given element
     """
     def __init__(self):
         # injected mass
@@ -360,12 +449,17 @@ class T2Timestep(object):
 
             f = self.read_balance_block(f)
         else:
+            # for parallel simulations, the balance block is in a separate file
             g = self.read_balance_block(g, double_read = double_read)
 
         print "timestep read"
         return f
 
     def read_balance_block(self, f, double_read = False):
+        """
+            For a given output timestep, reads the block of data dedicated to 
+            mass balance information.
+        """
         line = f.readline()
         s = line.split()
         # read through lines until 'VOL.' is hit, get 
@@ -411,10 +505,25 @@ class T2Timestep(object):
         return 0 
 
     def make_plot_grid(self, grid, axis, index, valtype = False ):
+        """ Makes a grid to be used for plotting
+            grid 
+                T2Grid object
+            axis 
+                1: x - axis
+                2: y - axis
+                3: z - axis
+            index: 
+                Slice to grab contour from
+
+                Example, in order to make a contour plot in the x-z plane
+                halfway in a domain with ny = 25:
+                set 
+        """
         print "making plot grid"
         print "axis: " + str(axis)
         print "index: " + str(index)
         print "valtype: " + str(valtype)
+        self.plot_grid = []
         vals = []
         if axis == 1:
             for x in grid.x_vals:
@@ -477,7 +586,9 @@ class T2Timestep(object):
         return 0
 
     def format_plot_grid(self, grid, axis, sleipner, shale = False):
-        """ spits out 3 numpy arrays"""
+        """ spits out 3 numpy arrays of X, Y, and Z to be used in the 
+            matplotlib contourplot routines
+        """
         if axis == 1:
             nxp = len(grid.x_vals)
             if sleipner == True:
@@ -523,12 +634,14 @@ class T2Timestep(object):
         indstr = "Index = " + str(index) 
         print "Plotting Planar Timestep: " + '\n' + valstr + axstr + indstr
         xpl, ypl, val = self.format_plot_grid(grid, axis, sleipner, shale)
+
         font = { 'size' : '16'}
         matplotlib.rc('font', **font)
         f = plt.figure(num=None, dpi=480, facecolor= 'w',\
                 #figsize=(7.5,10), 
             edgecolor ='k')
         ax = f.add_subplot(111)
+
         if sleipner == True:
             title_time = '{:.0f}'.format(self.step_time/ 365.25 + 1998)
             title_time = '{:.0f} days'.format(self.step_time)
@@ -541,18 +654,12 @@ class T2Timestep(object):
             CS = ax.contourf(xpl,ypl,val) 
             CB = plt.colorbar(CS, shrink = 0.8, extend = 'both')
             CB.set_label("Pressure [Pa]")
-            #f.suptitle("T2slice, simulation: "+ name + ": + " + \
-                    #"\n Pressure in  " + title_time + \
-                    #axstr + indstr)
             f.suptitle("Time = " + title_time)
         elif valtype == 'saturation':
             V = np.linspace(0.,0.8,num=Nlevels)
             CS = ax.contourf(xpl,ypl,val,V) 
             CB = plt.colorbar(CS, shrink = 0.8, extend = 'both', ticks =V )
             CB.set_label("Saturation []")
-            #f.suptitle("T2slice, simulation: "+ name + ": + " + \
-                    #"\n Saturation in  " + title_time +\
-                    #axstr + indstr)
             f.suptitle("Time = " + title_time)
         elif valtype == 'delta_p':
             CS = ax.contourf(xpl,ypl,val) 
@@ -779,7 +886,6 @@ def plot_planar_contours(grid, time_steps, sim_title, fmt='png',\
                 name = sim_title, fmt = fmt, sleipner = sleipner,\
                 shale = shale)
     return 0
-    return 0
 
 def check_3d_hydro_pressure(grid, time_steps):
     print "Checking Hydrostatic Equilibrium"
@@ -851,7 +957,8 @@ def get_element_chars(i, j, k):
         return el
 
 def get_index_maps():
-    # populate list of i j k element chars
+    # get dictionaries that map two character element strings 
+    # back to the indexes they came from
     i_map = {}
     j_map = {}
     k_map = {}
@@ -958,4 +1065,26 @@ def plot_timesteps(filename):
     ax.set_xlabel('time[hr]')
     ax.set_ylabel('timestep[hr]')
     plt.show()
-    
+
+def move_files(sim_title, fmt, parallel = False):
+    """ moves all relevant files to a holding directory
+    """
+    sim_title_dir = sim_title + '_dir'
+    call(["mkdir",sim_title_dir])
+    call("mv " + "*" + fmt + " " + sim_title_dir, shell=True)
+    call("mv " + "*" + ".pdf" + " " + sim_title_dir, shell=True)
+    if parallel == False:
+        call (["mv",sim_title,sim_title_dir])
+        call (["mv",sim_title+'.out',sim_title_dir])
+    else:
+        fname ='OUTPUT_DATA_' + sim_title
+        gname = 'OUTPUT_' + sim_title
+        call (["mv",fname,sim_title_dir])
+        call (["mv",gname,sim_title_dir])
+
+    call (["mv",'INCON' ,sim_title_dir])
+    call (["mv",'MESH' ,sim_title_dir])
+    call (["mv",'SAVE' ,sim_title_dir])
+    call (["mv",'rho_visc' ,sim_title_dir])
+    call (["cp",'CO2TAB' ,sim_title_dir])
+    return 0

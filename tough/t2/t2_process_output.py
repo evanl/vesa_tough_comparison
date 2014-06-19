@@ -1,67 +1,52 @@
 #Author - Evan Leister
 import sys
-from subprocess import call
 import numpy as np
 import matplotlib.pyplot as plt
 import t2_output_funcs as ot2f
 
-def process_t2_output(sim_title, parallel = False, split = 0,\
-        double_balance = False, num_outputs = 1):
-    # this must be changed to reflect the input data
-    # create an output grid object
-    grid = ot2f.T2grid()
-    # read the coordinate data from MESH
-    grid.read_mesh()
-
-
-    # read the file[s] for the timestep data
-    if parallel == True:
-        fname ='OUTPUT_DATA_' + sim_title
-        gname = 'OUTPUT_' + sim_title
-        print "fname " + fname
-        print "gname " + gname
-        f = open(fname)
-        g = open(gname)
-        grid.read_initial_mass(g)
-    else:
-        f = open(sim_title + '.out')
-        g = open(sim_title) # JUST A PLACEHOLD, BAD CODING <<<<<<<
-        grid.read_initial_mass(f)
-    time_steps = []
-    for i in range(num_outputs):
-        if split !=0 and i > 7:
-            year_add = 8
-        else:
-            year_add = 0
-        timetest = ot2f.T2Timestep()
-        double_read = double_balance
-        timetest.readOutput(f, g, grid, parallel = parallel, \
-                year_add = year_add, double_read = double_read)
-        timetest.get_co2_density_viscosity()
-        time_steps.append(timetest)
-    f.close()
-    g.close()
-
-    return grid, time_steps
 
 if __name__ == '__main__':
     print "PROCESSING TOUGH2 OUTPUT FOR " + str(sys.argv[1])
     if len(sys.argv) != 2:
         sys.exit( "Please specify a simulation title")
     sim_title = sys.argv[1]
+    # for hydrostatic simulations, prints the pressure difference as a function
+    # of elevation
     hydro = False
+
+    # these three parameters should match those in t2_create_input.py
     two_d = False
     sleipner = False
     shale = False
+
+    # if this is run to process two-file parallel output. 
     parallel = False
+
+    # if the simulation is split into two runs, concatenate both of them into
+    # one file in the following way (sim_title = test)
+    # Files: 
+    # OUTPUT_DATA_FIRST_8_STEPS
+    # OUTPUT_DATA_LAST_3_STEPS
+    #   Concatenate files by using
+    #   $ cat OUTPUT_DATA_FIRST_8_STEPS OUTPUT_DATA_LAST_3_STEPS > \
+    #         OUTPUT_DATA_test
+    # OUTPUT_FIRST_8_STEPS
+    # OUTPUT_LAST_3_STEPS
+    #   $ cat OUTPUT_FIRST_8_STEPS OUTPUT_LAST_3_STEPS > \
+    #         OUTPUT_test
+    # 
+    # After doing this, set split = 8 in order to correctly count steps
     split = 0
+
+    # If there are two mass-balance blocks for each timestep, leave this True
     double_balance = True
+
     # number of timesteps from TOUGH2 output file.
     num_outputs = 5
-    grid, time_steps = process_t2_output(sim_title, parallel, split = split,\
+
+    grid, time_steps = ot2f.process_t2_output(sim_title, parallel, split = split,\
             double_balance = double_balance, num_outputs = num_outputs)
-    # choose format for plots.
-    fmt = 'png'
+
     if two_d == True:
         eleme = 'aH732'
         k_layer = 0
@@ -82,14 +67,9 @@ if __name__ == '__main__':
             k_layer = 0
             xind = 12
             yind = 12
-        #modified for center
-        #eleme = 'cA2 2'
-        #k_layer = 2
-        # column
-        #eleme = 'dA0 0'
-        #k_layer = 0
-        # box
 
+    # choose format for plots.
+    fmt = 'png'
     for basis in range(1,4):
         ot2f.plot_planar_contours(grid, time_steps, sim_title, fmt, \
                 two_d = two_d, sleipner = sleipner, \
@@ -107,21 +87,4 @@ if __name__ == '__main__':
 
     ot2f.write_viscosity(grid, time_steps)
 
-    sim_title_dir = sim_title + '_dir'
-    call(["mkdir",sim_title_dir])
-    call("mv " + "*" + fmt + " " + sim_title_dir, shell=True)
-    call("mv " + "*" + ".pdf" + " " + sim_title_dir, shell=True)
-    if parallel == False:
-        call (["mv",sim_title,sim_title_dir])
-        call (["mv",sim_title+'.out',sim_title_dir])
-    else:
-        fname ='OUTPUT_DATA_' + sim_title
-        gname = 'OUTPUT_' + sim_title
-        call (["mv",fname,sim_title_dir])
-        call (["mv",gname,sim_title_dir])
-
-    call (["mv",'INCON' ,sim_title_dir])
-    call (["mv",'MESH' ,sim_title_dir])
-    call (["mv",'SAVE' ,sim_title_dir])
-    call (["mv",'rho_visc' ,sim_title_dir])
-    call (["cp",'CO2TAB' ,sim_title_dir])
+    ot2f.move_files(sim_title, fmt, parallel = parallel)
