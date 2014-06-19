@@ -3,9 +3,6 @@ import sys
 import string
 import t2_input_funcs as it2f
 
-# TODO Collate all input parameters to be called from this driver
-# TODO make a T2InputFile class for the simulation aka make two more functions
-
 # TODO clean up processing routines into a returnable object that can be 
 # called by other routines. 
 # TODO comment post-processing routines
@@ -20,7 +17,7 @@ if __name__ == '__main__':
         sys.exit( "Please specify a simulation title")
     sim_title = str(sys.argv[1])
 
-    # if hydro_directory is False, it means that the initial condition will be 
+    # if hydro is False, it means that the initial condition will be 
     # generated using a hydrostatic gradient with a constant density.
     # If a directory is specified, the initial pressures and 
     # dissolved fractions will be taken from the 'hydro_directory' + '_dir/'.
@@ -51,7 +48,11 @@ if __name__ == '__main__':
     # If isothermal == True, the heat equation is not solved and 
     # the co2_enthalpy (specific enthalpy) is not called by TOUGH2
     isothermal = False
-    co2_enthalpy = 1000.e3 #J/kg
+    co2_enthalpy = 150.e3 #J/kg
+
+    solubility = 0.454104e-3
+    #solubility = 0.0
+    temp = 32
 
     # If True, ignores flow rate and fixes pressure and saturation
     # with an apparent CO2 saturation of sat_frac
@@ -62,6 +63,10 @@ if __name__ == '__main__':
     # simulated in between each output.
     num_timesteps = 5
     days_per_timestep = 15
+
+    # rock parameters
+    porosity = 0.35
+    permeability = 2.e-12
 
     # injection rate in kg/sec
     if hydro == True:
@@ -95,27 +100,44 @@ if __name__ == '__main__':
         shale = True
         sleipner = False
 
+    if uniform == True:
+        injection_cell = 'yB212'
+        nx = 25
+        ny = 25
+        nz = 25
+        dx = 50
+        dy = 50
+        dz = 0.6
+    else:
+        e_cel, nx, ny, nz = re.read_eclipse()
+        if self.two_d == True:
+            injection_cell = 'aH732'
+        else:
+            injection_cell = 'JH732'
+
+
     # create an input file and input grid object
-    t2input = it2f.T2Input()
-    tg = it2f.T2InputGrid(nx, ny, nz)
+    t2input = it2f.T2Input(sim_title, cp_vals, two_d = two_d, \
+              uniform = uniform, \
+              sleipner = sleipner, hydro = hydro, \
+              hydro_directory = hydro_directory, \
+              num_steps = num_timesteps, \
+              days_per_step = days_per_timestep, \
+              edge_bc_type = edge_bc_type, linear_rp = linear_rp,\
+              shale = shale, mass_rate = mass_rate, \
+              tolerance = -5, type1_source = type1_source, sat_frac = sat_frac,
+              isothermal = isothermal, co2_enthalpy = co2_enthalpy,
+              porosity = porosity, permeability = permeability)
+    t2grid = it2f.T2InputGrid(nx, ny, nz)
 
     # create and write the mesh file or use an old one
-    t2input.write_mesh(tg)
-    t2input.write_incon(tg)
+    t2input.write_mesh(t2grid, dx = dx, dy = dy, dz = dz, temp = temp,\
+            solubility = solubility)
+    t2input.write_incon(t2grid)
 
-    t2input.write_input_file()
+    t2input.write_input_file(sleipner = sleipner)
 
-    if hydro == False:
+    if hydro == True:
         t2grid.plot_cells(show = False, two_d = two_d)
         t2grid.plot_cells_slice(direc = 2, ind = 0, show = False)
 
-    it2f.write_input_files(sim_title, two_d = two_d, \
-            uniform = uniform, \
-            sleipner = sleipner, hydro = hydro, \
-            hydro_directory = hydro_directory, \
-            num_steps = num_timesteps, \
-            days_per_step = days_per_timestep, \
-            edge_bc_type = edge_bc_type, linear_rp = linear_rp,\
-            no_cap = no_cap, shale = shale, mass_rate = mass_rate, tolerance = -5,\
-            type1_source = type1_source, sat_frac = sat_frac,
-            isothermal = isothermal, co2_enthalpy = co2_enthalpy)

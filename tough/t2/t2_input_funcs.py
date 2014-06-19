@@ -9,7 +9,264 @@ from time import clock
 import string
 from subprocess import call
 
+class T2Input(object):
+    def __init__(self, sim_title, cp_vals, two_d = False, uniform = False,\
+            sleipner = False, hydro = False, hydro_directory = False,\
+            num_steps = 11, days_per_step = 365.25, \
+            edge_bc_type = 1, linear_rp = False, 
+            shale = True, mass_rate = 0.0, tolerance = -5,\
+            type1_source = False, sat_frac = 0.8, \
+            isothermal = True, co2_enthalpy = 50., \
+            porosity = 0.35, permeability = 2.e-12,\
+            injection_cell = 'yB212'):
+        """ Creates a TOUGH2 injection simulation
+            self.sim_title 
+                Title of simulation
 
+            self.two_d 
+                If True, makes a vertical average of a fully discretized 3d domain
+                with a single, thick grid cell in the vertical.
+
+            self.uniform 
+                If true, a uniform, rectangular grid will be generated using
+                fill_uniform_grid
+              
+            self.hydro 
+                If hydro is False, it means that the initial condition will be 
+                generated using a hydrostatic gradient with a constant density.
+                If a directory is specified, the initial pressures and 
+                dissolved fractions will be taken from the 
+                'hydro_directory' + '_dir/'.
+                in order to run a particular grid to hydrostatic equilibrium, 
+                specify hydro = True and use num_timesteps = 1 and 
+                days_per_timestep = 30
+
+            self.hydro_directory 
+                Directory with grid that has been run to hydrostatic equilibrium
+
+            self.num_steps 
+                Number of timesteps that are output to 'sim_title.out'
+
+            self.days_per_step 
+                The number of days in between each timestep
+                Example:
+                    In order to run a 360 day simulation with output roughly every
+                    month, use:
+                    num_steps = 12
+                    days_per_step = 30
+
+            self.edge_bc_type 
+                If edge_bc_type is 2: all domain boundaries are no flow
+                if edge_bc_type is 1: the horizontal domain boundaries are 
+                fixed-pressure boundaries. the top and bottom boundaries
+                of the domain remain no-flow
+
+            self.linear_rp 
+                IF true, relative permeability functions will be linear
+
+            self.cp_vals 
+                List of capillary pressure values, currently only takes a 
+                van-genuchten-mualem model
+                cp_vals[0] = lambda
+                cp_vals[1] = liquid residual saturation, 
+                             left at 0.0 for numerical purposes as the manual
+                             recommends specifying residual saturation less than
+                             the relative permeability residual saturation
+                cp_vals[2] = 1/ P_0
+                cp_vals[3] = P_max, set at 10. for maximum capillary pressure = 0.
+                cp_vals[4] = S_b_sat, 
+
+            self.shale 
+                If true, includes the shale cells in the Eclipse files
+            self.mass_rate 
+                Constant injection rate [kg/s]
+            self.tolerance 
+                Absolute error convergence criterion for numerical solutions, 
+                accepts error of 10^tolerance.
+                Must be given as a negative number
+
+            self.type1_source 
+                If True, will ignore injection rate and specify a type 1 boundary
+                condition at the injection cell
+
+            self.sat_frac 
+                Specifies the fraction of available CO2 saturation used in type 1
+                boundary condition simulations.
+                For example, if the brine residual saturation is 0.2, then 
+                the CO2 can have 0.8/1 of the total pore space. 
+                Thus, if sat_frac is 0.5, the CO2 will be fixed at 0.4 (0.8 * 0.5)
+                in the type1_source cell
+
+            self.isothermal 
+                If True, no specific enthalpy is specified
+                If False, the CO2 specific enthalpy is used and the injection cell
+                is specified to have an infinite density
+
+            self.co2_enthalpy 
+                Specifies the CO2 specific enthalpy in J/kg
+
+            porosity
+                specifies default rock porosity
+            perm 
+                absolute permeability in [m^2]
+            injection_cell
+                specifies a single injection cell in 5-character coordinates
+
+        """
+        self.sim_title = sim_title
+        self.two_d = two_d
+        self.uniform = uniform
+        self.hydro = hydro
+        self.hydro_directory = hydro_directory
+        self.num_steps = num_steps
+        self.days_per_step = days_per_step
+        self.edge_bc_type = edge_bc_type
+        self.linear_rp = linear_rp
+        self.cp_vals = cp_vals
+        self.shale = shale
+        self.mass_rate = mass_rate
+        self.tolerance = tolerance
+        self.type1_source = type1_source
+        self.sat_frac = sat_frac
+        self.isothermal = isothermal
+        self.co2_enthalpy = co2_enthalpy
+        self.porosity = porosity
+        self.perm = permeability
+        self.injection_cell = injection_cell
+        if type1_source == True:
+            self.type1_source_cell = injection_cell
+        else:
+            self.type1_source_cell = 'none'
+    def write_input_file(self, sleipner = False):
+        print 'CREATING TOUGH2 INPUT FILE'
+
+
+        output_day_list = []
+        for i in range(self.num_steps):
+            output_day_list.append(self.days_per_step * (i+1))
+
+        print 'Creating T2 input files for simulation: ' + self.sim_title
+        f = open(self.sim_title,'w')
+        f.write('*'+ self.sim_title +'*\n')
+
+        #input parameters
+        if sleipner == True:
+            self.porosity = 0.35 
+            xperm = self.perm
+            yperm = self.perm
+            zperm = self.perm /3.
+        else:
+            xperm = self.perm
+            yperm = self.perm
+            zperm = self.perm 
+
+        if self.linear_rp == True:
+            rel_perm = 'linear'
+            rp_vals = [0.2, 0., 1., 1.]
+        else:
+            rel_perm = 'vanGenuchten'
+            rp_vals = [0.8, 0.2, 1.0, 0.05]
+
+        plot_relperm_cap(rp_vals, self.cp_vals, fmt = 'pdf', rp = rel_perm)
+
+        write_separator(f, 'ROCKS')
+        # SAND
+        name = 'sands'
+        sand_density = 2600.
+        write_rocks(f, name, sand_density, self.porosity, xperm, yperm, zperm, \
+            self.cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
+            rel_perm = rel_perm)
+
+        # injector cell to make the heat equation solve correctly
+        name = 'well '
+        sand_density = 2600.e40
+        write_rocks(f, name, sand_density, self.porosity, xperm, yperm, zperm, \
+            self.cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
+            rel_perm = rel_perm)
+
+        # SHALE 
+        name = 'shale'
+        shale_density = 2600.
+        shale_porosity = 0.15
+        xperm = 1.e-18
+        yperm = 1.e-18
+        zperm = 1.e-18
+        write_rocks(f, name, shale_density, shale_porosity, xperm, yperm, zperm, \
+            self.cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
+            rel_perm = rel_perm,\
+            end = True)
+
+        write_multi(f, isothermal = self.isothermal)
+        write_selec(f)
+        write_start(f)
+        write_param(f, tmax = output_day_list[-1] * 24 * 3600,\
+                tolexp = self.tolerance)
+        linear_solver_integer = 5
+        preprocess_integer = 1
+        write_solvr(f, linear_solver_integer, preprocess_integer )
+
+        # flow rate in megatons per year for the Sleipner injection
+        #massinflow = [0.0198, 0.0405, 0.0437, 0.0540, 0.0740, 0.1030, \
+                                    #0.1390, 0.1830, 0.2370, 0.2960, 0.370]
+        #kg_per_sec_factor = 31.71 # kg/s per mt/yr
+        #kgInflow = [ x * kg_per_sec_factor for x in massinflow]
+        phase = 'co2'
+
+        if self.type1_source == True:
+            write_gener(f, self.injection_cell, phase = phase, mass_rate = 0.0,\
+                    co2_enthalpy = self.co2_enthalpy, isothermal = self.isothermal)
+        else:
+            write_gener(f, self.injection_cell, phase = phase, mass_rate = self.mass_rate, \
+                    co2_enthalpy = self.co2_enthalpy, isothermal = self.isothermal)
+                    #, kg_inflow = kgInflow, times = output_day_list )
+
+        write_times(f, output_day_list)
+        write_foft(f)
+        write_coft(f, sleipner)
+        write_goft(f)
+        write_separator(f, 'ENDCY')
+        f.close()
+
+        print "write_input_file COMPLETE"
+        return 0
+
+    def write_mesh(self, t2grid, dx = 50, dy = 50, dz = 0.6, \
+            temp = 32, inj_cell = 'yB212', solubility = 0.0):
+        if self.uniform == True:
+            brine_density = 1016.4
+            t2grid.fill_uniform_grid(self.porosity, dx, dy, dz, density = brine_density,\
+                    solubility_limit = solubility, inj_cell = self.injection_cell)
+            e_cel = 'uniform'
+            t2grid.write_mesh(e_cel, two_d = self.two_d, uniform = self.uniform,\
+                    boundary_type = self.edge_bc_type, shale = self.shale,\
+                    type1_source_cell = self.type1_source_cell)
+        else:
+            brine_density = 1019.35
+            if self.hydro_directory == False:
+                t2grid.fill_eclipse_grid(e_cel, temperature = temp, \
+                        density = brine_density, two_d = self.two_d, \
+                        solubility = solubility, shale = self.shale)
+                t2grid.write_mesh(e_cel, two_d = self.two_d, uniform = self.uniform,\
+                        boundary_type = self.edge_bc_type, shale = self.shale,\
+                        type1_source_cell = self.type1_source_cell)
+            else:
+                mesh_string = self.hydro_directory + '_dir/MESH'
+                call (["mv", mesh_string, './OLDMESH'])
+                clean_oldmesh_file()
+        return 0
+
+    def write_incon(self, t2grid):
+        if self.hydro_directory == False:
+            t2grid.write_incon(shale = self.shale, porosity = self.porosity)
+        else:
+            t2grid.use_old_incon(self.hydro_directory, \
+                    type1_source_cell = self.type1_source_cell,\
+                    saturation_fraction = self.sat_frac)
+
+        return 0
+    # end T2Input class
+
+# writing functions for different blocks of the input file
 def write_separator(f, keyword):
     """ writes for the following keywords
     START ROCKS
@@ -476,173 +733,6 @@ def format_float_incon(val):
         print "val = " + str(val)
     s = ''.join(l)
     return s
-
-class T2Input(object):
-    """ Creates a TOUGH2 injection simulation
-    """
-    def __init__(self, sim_title, two_d = False, uniform = False,\
-            sleipner = False, hydro = False, hydro_directory = False,\
-            num_steps = 11, days_per_step = 365.25, \
-            edge_bc_type = 1, linear_rp = False, cp_vals, \
-            shale = True, mass_rate = 0.0, tolerance = -7,\
-            type1_source = False, sat_frac = 0.8, \
-            isothermal = True, co2_enthalpy = 50.):
-    def write_input_file():
-        print 'CREATING TOUGH2 INPUT FILE'
-        if uniform == True:
-            injection_cell = 'yB212'
-            nx = 25
-            ny = 25
-            nz = 25
-            dx = 50
-            dy = 50
-            dz = 0.6
-        else:
-            e_cel, nx, ny, nz = re.read_eclipse()
-            if two_d == True:
-                injection_cell = 'aH732'
-            else:
-                injection_cell = 'JH732'
-
-
-        print "Read time"
-        t_read = clock()
-        print t_read
-
-        output_day_list = []
-        for i in range(num_steps):
-            output_day_list.append(days_per_step * (i+1))
-
-        print "nx, ny, nz"
-        print nx, ny, nz
-
-        print 'Creating T2 input files for simulation: ' + sim_title
-        f = open(sim_title,'w')
-        f.write('*'+ sim_title +'*\n')
-
-        #input parameters
-        if sleipner == True:
-            porosity = 0.35 
-            xperm = 2.e-12
-            yperm = 2.e-12
-            zperm = xperm /3.
-        else:
-            porosity = 0.35
-            xperm = 2.e-12
-            yperm = xperm
-            zperm = xperm 
-
-        if linear_rp == True:
-            rel_perm = 'linear'
-            rp_vals = [0.2, 0., 1., 1.]
-        else:
-            rel_perm = 'vanGenuchten'
-            rp_vals = [0.8, 0.2, 1.0, 0.05]
-
-        plot_relperm_cap(rp_vals, cp_vals, fmt = 'pdf', rp = rel_perm)
-
-        write_separator(f, 'ROCKS')
-        # SAND
-        name = 'sands'
-        sand_density = 2600.
-        write_rocks(f, name, sand_density, porosity, xperm, yperm, zperm, \
-            cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
-            rel_perm = rel_perm)
-
-        # injector cell to make the heat equation solve correctly
-        name = 'well '
-        sand_density = 2600.e40
-        write_rocks(f, name, sand_density, porosity, xperm, yperm, zperm, \
-            cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
-            rel_perm = rel_perm)
-
-        # SHALE 
-        name = 'shale'
-        shale_density = 2600.
-        porosity = 0.35
-        xperm = 1.e-18
-        yperm = 1.e-18
-        zperm = 1.e-18
-        write_rocks(f, name, shale_density, porosity, xperm, yperm, zperm, \
-            cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
-            rel_perm = rel_perm,\
-            end = True)
-
-        write_multi(f, isothermal = isothermal)
-        write_selec(f)
-        write_start(f)
-        write_param(f, tmax = output_day_list[-1] * 24 * 3600,\
-                tolexp = tolerance)
-        linear_solver_integer = 5
-        preprocess_integer = 1
-        write_solvr(f, linear_solver_integer, preprocess_integer )
-
-        # flow rate in megatons per year for the Sleipner injection
-        #massinflow = [0.0198, 0.0405, 0.0437, 0.0540, 0.0740, 0.1030, \
-                                    #0.1390, 0.1830, 0.2370, 0.2960, 0.370]
-        #kg_per_sec_factor = 31.71 # kg/s per mt/yr
-        #kgInflow = [ x * kg_per_sec_factor for x in massinflow]
-        phase = 'co2'
-
-        if type1_source == True:
-            type1_source_cell = injection_cell
-            write_gener(f, injection_cell, phase = phase, mass_rate = 0.0,\
-                    co2_enthalpy = co2_enthalpy, isothermal = isothermal)
-        else:
-            type1_source_cell = 'none'
-            write_gener(f, injection_cell, phase = phase, mass_rate = mass_rate, \
-                    co2_enthalpy = co2_enthalpy, isothermal = isothermal)
-                    #, kg_inflow = kgInflow, times = output_day_list )
-
-        write_times(f, output_day_list)
-        write_foft(f)
-        write_coft(f, sleipner)
-        write_goft(f)
-        write_separator(f, 'ENDCY')
-        f.close()
-
-        solubility = 0.454104e-3
-        #solubility = 0.0
-
-        temp = 32
-
-
-        print "Write Time"
-        print clock() - t_read
-        print "write_input_file COMPLETE"
-        return 0
-    def write_mesh(self, t2grid, temp = 32, inj_cell = 'yB212'):
-        if uniform == True:
-            brine_density = 1016.4
-            t2grid.fill_uniform_grid(porosity, dx, dy, dz, density = brine_density,\
-                    solubility_limit = solubility, inj_cell = injection_cell)
-            e_cel = 'uniform'
-            t2grid.write_mesh(e_cel, two_d = two_d, uniform = uniform,\
-                    boundary_type = edge_bc_type, shale = shale,\
-                    type1_source_cell = type1_source_cell)
-        else:
-            brine_density = 1019.35
-            if hydro_directory == False:
-                t2grid.fill_eclipse_grid(e_cel, temperature = temp, \
-                        density = brine_density, two_d = two_d, \
-                        solubility = solubility, shale = shale)
-                t2grid.write_mesh(e_cel, two_d = two_d, uniform = uniform,\
-                        boundary_type = edge_bc_type, shale = shale,\
-                        type1_source_cell = type1_source_cell)
-            else:
-                mesh_string = hydro_directory + '_dir/MESH'
-                call (["mv", mesh_string, './OLDMESH'])
-                clean_oldmesh_file()
-        return 0
-
-    def write_incon(self, t2grid):
-        if hydro_directory == False:
-            t2grid.write_incon(shale = shale, porosity = porosity)
-        else:
-            t2grid.use_old_incon(hydro_directory,type1_source_cell = type1_source_cell,\
-                    saturation_fraction = sat_frac)
-
-        return 0
 
 class T2InputGrid(object):
     """
