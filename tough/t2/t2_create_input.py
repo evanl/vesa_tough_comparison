@@ -48,11 +48,11 @@ if __name__ == '__main__':
     # If isothermal == True, the heat equation is not solved and 
     # the co2_enthalpy (specific enthalpy) is not called by TOUGH2
     isothermal = False
-    co2_enthalpy = 150.e3 #J/kg
+    co2_enthalpy = 100.e3 #J/kg
 
     solubility = 0.454104e-3
     #solubility = 0.0
-    temp = 32
+    temp = 37
 
     # If True, ignores flow rate and fixes pressure and saturation
     # with an apparent CO2 saturation of sat_frac
@@ -62,12 +62,13 @@ if __name__ == '__main__':
     # specifies the number of output timesteps, and how many days are 
     # simulated in between each output.
     num_timesteps = 5
-    days_per_timestep = 15
+    days_per_timestep = 30
 
     # rock parameters
     porosity = 0.35
     permeability = 2.e-12
 
+    phase = 'co2'
     # injection rate in kg/sec
     if hydro == True:
         mass_rate = 0.0
@@ -86,6 +87,7 @@ if __name__ == '__main__':
     else:
         # directory names for different cases
         hydro_directory = 'u25_hydro'
+        hydro_directory = 'u25_t37_hydro'
         if sleipner == True:
             if shale == True:
                 hydro_directory = 'sl_hydro'
@@ -127,11 +129,12 @@ if __name__ == '__main__':
               shale = shale, mass_rate = mass_rate, \
               tolerance = -5, type1_source = type1_source, sat_frac = sat_frac,
               isothermal = isothermal, co2_enthalpy = co2_enthalpy,
-              porosity = porosity, permeability = permeability)
+              porosity = porosity, permeability = permeability, 
+              injection_cell = injection_cell, phase = phase)
     t2grid = it2f.T2InputGrid(nx, ny, nz)
 
     # create and write the mesh file or use an old one
-    t2input.write_mesh(t2grid, dx = dx, dy = dy, dz = dz, temp = temp,\
+    t2input.write_mesh_file(t2grid, dx = dx, dy = dy, dz = dz, temp = temp,\
             solubility = solubility)
     t2input.write_incon(t2grid)
 

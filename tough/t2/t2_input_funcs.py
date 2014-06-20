@@ -18,7 +18,7 @@ class T2Input(object):
             type1_source = False, sat_frac = 0.8, \
             isothermal = True, co2_enthalpy = 50., \
             porosity = 0.35, permeability = 2.e-12,\
-            injection_cell = 'yB212'):
+            injection_cell = 'yB212', phase = 'co2'):
         """ Creates a TOUGH2 injection simulation
             self.sim_title 
                 Title of simulation
@@ -133,6 +133,7 @@ class T2Input(object):
         self.porosity = porosity
         self.perm = permeability
         self.injection_cell = injection_cell
+        self.phase = phase
         if type1_source == True:
             self.type1_source_cell = injection_cell
         else:
@@ -210,14 +211,17 @@ class T2Input(object):
                                     #0.1390, 0.1830, 0.2370, 0.2960, 0.370]
         #kg_per_sec_factor = 31.71 # kg/s per mt/yr
         #kgInflow = [ x * kg_per_sec_factor for x in massinflow]
-        phase = 'co2'
 
         if self.type1_source == True:
-            write_gener(f, self.injection_cell, phase = phase, mass_rate = 0.0,\
-                    co2_enthalpy = self.co2_enthalpy, isothermal = self.isothermal)
+            write_gener(f, self.injection_cell, phase = self.phase, \
+                    mass_rate = 0.0,\
+                    co2_enthalpy = self.co2_enthalpy, \
+                    isothermal = self.isothermal)
         else:
-            write_gener(f, self.injection_cell, phase = phase, mass_rate = self.mass_rate, \
-                    co2_enthalpy = self.co2_enthalpy, isothermal = self.isothermal)
+            write_gener(f, self.injection_cell, phase = self.phase, \
+                    mass_rate = self.mass_rate, \
+                    co2_enthalpy = self.co2_enthalpy, \
+                    isothermal = self.isothermal)
                     #, kg_inflow = kgInflow, times = output_day_list )
 
         write_times(f, output_day_list)
@@ -230,12 +234,13 @@ class T2Input(object):
         print "write_input_file COMPLETE"
         return 0
 
-    def write_mesh(self, t2grid, dx = 50, dy = 50, dz = 0.6, \
+    def write_mesh_file(self, t2grid, dx = 50, dy = 50, dz = 0.6, \
             temp = 32, inj_cell = 'yB212', solubility = 0.0):
         if self.uniform == True:
             brine_density = 1016.4
-            t2grid.fill_uniform_grid(self.porosity, dx, dy, dz, density = brine_density,\
-                    solubility_limit = solubility, inj_cell = self.injection_cell)
+            t2grid.fill_uniform_grid(self.porosity, dx, dy, dz, \
+                    density = brine_density, solubility_limit = solubility, \
+                    inj_cell = self.injection_cell, temperature = temp)
             e_cel = 'uniform'
             t2grid.write_mesh(e_cel, two_d = self.two_d, uniform = self.uniform,\
                     boundary_type = self.edge_bc_type, shale = self.shale,\
@@ -533,11 +538,14 @@ def write_gener(f, eleme, phase = 'brine', mass_rate = .1585, \
 
     if kg_inflow == [] :
         mr = '{: 10.4f}'.format(mass_rate)
+        heat_rate = '{: 10.4f}'.format(mass_rate * 10.e5)
         if isothermal == True:
             se = ''
         else:
             se = '{: 10.3e}'.format(co2_enthalpy)
         f.write(eleme + 'inj 1'+ 19*' ' + '1' + 5 * ' ' + p + mr + se + '\r\n')
+        #f.write(eleme + 'hot 1'+ 19*' ' + '1' + 5 * ' ' + \
+                #'HEAT ' + heat_rate + '\r\n')
     else: 
         if len(kg_inflow) != len(times):
             print "mass rate and time arrays are not the same length"
@@ -918,7 +926,7 @@ class T2InputGrid(object):
 
     def fill_uniform_grid(self, porosity, dx, dy, dz, density = 1000.,\
             solubility_limit = 0.454104e-3, inj_cell = 'none',\
-            altered_cell = 'none'):
+            altered_cell = 'none', temperature = 32.):
         # populates grid 
         g = open('MESH', 'w')
         print "MESH created with:"
@@ -946,10 +954,11 @@ class T2InputGrid(object):
                     self.pres[eleme] = -zlocal * density * 10.0
                     self.na_cl[eleme] = 3.2e-2
                     self.x_co2[eleme] = solubility_limit
-                    self.temp[eleme] = 32.
+                    self.temp[eleme] = temperature
                     temparrayz.append(eleme)
 
                     if eleme == inj_cell:
+                        self.mat[eleme] = 'sands'
                         self.mat[eleme] = 'well '
                         print "INJECTION cell"
                         print eleme
@@ -1054,6 +1063,7 @@ class T2InputGrid(object):
             self.mat[eleme] = 'sands'
         elif injector == True:
             self.mat[eleme] = 'well '
+            #self.mat[eleme] = 'sands'
         else:
             self.mat[eleme] = 'shale'
 
