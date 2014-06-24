@@ -48,11 +48,11 @@ if __name__ == '__main__':
     # If isothermal == True, the heat equation is not solved and 
     # the co2_enthalpy (specific enthalpy) is not called by TOUGH2
     isothermal = False
-    co2_enthalpy = 100.e3 #J/kg
+    co2_enthalpy = 293.e3 #J/kg
 
     solubility = 0.454104e-3
     #solubility = 0.0
-    temp = 37
+    temp = 32
 
     # If True, ignores flow rate and fixes pressure and saturation
     # with an apparent CO2 saturation of sat_frac
@@ -62,7 +62,7 @@ if __name__ == '__main__':
     # specifies the number of output timesteps, and how many days are 
     # simulated in between each output.
     num_timesteps = 5
-    days_per_timestep = 30
+    days_per_timestep = 5
 
     # rock parameters
     porosity = 0.35
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     else:
         # directory names for different cases
         hydro_directory = 'u25_hydro'
-        hydro_directory = 'u25_t37_hydro'
+        #hydro_directory = 'u25_t37_hydro'
         if sleipner == True:
             if shale == True:
                 hydro_directory = 'sl_hydro'

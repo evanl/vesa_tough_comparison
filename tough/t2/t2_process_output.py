@@ -85,6 +85,6 @@ if __name__ == '__main__':
 
     ot2f.plot_mass_balance(grid, time_steps)
 
-    ot2f.write_viscosity(grid, time_steps)
+    #ot2f.write_viscosity(grid, time_steps)
 
     ot2f.move_files(sim_title, fmt, parallel = parallel)

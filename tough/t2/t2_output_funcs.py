@@ -39,7 +39,7 @@ def process_t2_output(sim_title, parallel = False, split = 0,\
         double_read = double_balance
         timetest.readOutput(f, g, grid, parallel = parallel, \
                 year_add = year_add, double_read = double_read)
-        timetest.get_co2_density_viscosity()
+        #timetest.get_co2_density_viscosity()
         time_steps.append(timetest)
     f.close()
     g.close()
@@ -114,7 +114,10 @@ class T2grid(object):
                     self.x[eleme] = float(s[-2])
                     self.y[eleme] = float(s[-1][:9])
                     self.z[eleme] = float(s[-1][9:])
-                else : 
+                elif len(s[-1]) == 5 : 
+                    print eleme
+                    del self.elements[-1]
+                else:
                     self.x[eleme] = float(s[-3])
                     self.y[eleme] = float(s[-2])
                     self.z[eleme] = float(s[-1])
@@ -135,7 +138,7 @@ class T2grid(object):
                 self.x_vals.append(self.x[el])
             else:
                 for entry in self.x_vals:
-                    if entry == self.x[el]:
+                    if entry == self.x[el] or entry == 'con00':
                         flag = False
                 if flag:
                     self.x_vals.append(self.x[el])
@@ -337,6 +340,7 @@ class T2Timestep(object):
 
         # reads lines until the next OUTPUT block is encountered
         while s == [] or s[0] != 'OUTPUT':
+            print "LOOKING FOR OUTPUT", s
             line = f.readline()
             s = line.split()
 
@@ -362,6 +366,7 @@ class T2Timestep(object):
         # reads blank lines or skips them until the end of the output block
         # signified by the line of '@' symbols
         while s == [] or line[1] != '@':
+            print "skimming through output"
             # skips the lines that are blank
             if s == []:
                 line = f.readline()
@@ -389,38 +394,41 @@ class T2Timestep(object):
                         line = f.readline()
                     s = line.split()
 
+                print "grabbing output", s
 
                 # if the cell is not a dummy boundary cell
                 # adds the element and its values to the dictionaries
                 if s[0][:3] != 'ina' :
+                    if s[0][0:5] != 'con00':
+                        # handles the case for blank spaces 
+                        # in between final characters
+                        if len(s[0]) == 3:
+                            s[0] = s[0] + ' ' + s[1]
+                            del s[1]
+                        # handles the case for full-length strings
+                        # NOTE
+                        # This will likely have to change once 
+                        # the full 3d version of 
+                        # tough2 is implemented and the indices change from 2 to 3d
+                        if len(s[0]) == 9:
+                            l = list(s[0])
+                            el = ''.join(l[0:5])
+                            ind = ''.join(l[5:9])
+                            del s[0]
+                            s.insert(0,ind)
+                            s.insert(0,el)
 
-                    # handles the case for blank spaces 
-                    # in between final characters
-                    if len(s[0]) == 3:
-                        s[0] = s[0] + ' ' + s[1]
-                        del s[1]
-                    # handles the case for full-length strings
-                    # NOTE
-                    # This will likely have to change once 
-                    # the full 3d version of 
-                    # tough2 is implemented and the indices change from 2 to 3d
-                    if len(s[0]) == 9:
-                        l = list(s[0])
-                        el = ''.join(l[0:5])
-                        ind = ''.join(l[5:9])
-                        del s[0]
-                        s.insert(0,ind)
-                        s.insert(0,el)
+                        eleme = s[0]
 
-                    eleme = s[0]
-                    self.elements.append(eleme)
-                    self.pressure[eleme] = float(s[2])
-                    self.pres_diff[eleme] = \
-                            self.pressure[eleme] - grid.pres_init[eleme]
-                    self.temperature[eleme] = float(s[3])
-                    self.sat_gas[eleme] = float(s[4])
-                    self.x_co2[eleme] = float(s[8])
-                    self.rho_gas[eleme] = float(s[11])
+                        self.elements.append(eleme)
+                        self.pressure[eleme] = float(s[2])
+                        
+                        self.pres_diff[eleme] = \
+                                self.pressure[eleme] - grid.pres_init[eleme]
+                        self.temperature[eleme] = float(s[3])
+                        self.sat_gas[eleme] = float(s[4])
+                        self.x_co2[eleme] = float(s[8])
+                        self.rho_gas[eleme] = float(s[11])
                 line = f.readline()
                 s = line.split()
             # end while for reading sub-block

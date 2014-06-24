@@ -194,6 +194,17 @@ class T2Input(object):
         zperm = 1.e-18
         write_rocks(f, name, shale_density, shale_porosity, xperm, yperm, zperm, \
             self.cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
+            rel_perm = rel_perm)
+
+        # confining beds
+        name = 'cfbed'
+        bed_density = 2600.
+        bed_porosity = 0.0
+        bed_perm = 0.0
+        # confining bed for heat exchange
+        write_rocks(f, name, bed_density, bed_porosity, \
+            bed_perm, bed_perm, bed_perm, \
+            self.cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
             rel_perm = rel_perm,\
             end = True)
 
@@ -201,7 +212,7 @@ class T2Input(object):
         write_selec(f)
         write_start(f)
         write_param(f, tmax = output_day_list[-1] * 24 * 3600,\
-                tolexp = self.tolerance)
+                tolexp = self.tolerance, isothermal = self.isothermal)
         linear_solver_integer = 5
         preprocess_integer = 1
         write_solvr(f, linear_solver_integer, preprocess_integer )
@@ -244,7 +255,8 @@ class T2Input(object):
             e_cel = 'uniform'
             t2grid.write_mesh(e_cel, two_d = self.two_d, uniform = self.uniform,\
                     boundary_type = self.edge_bc_type, shale = self.shale,\
-                    type1_source_cell = self.type1_source_cell)
+                    type1_source_cell = self.type1_source_cell,\
+                    isothermal = self.isothermal)
         else:
             brine_density = 1019.35
             if self.hydro_directory == False:
@@ -253,7 +265,8 @@ class T2Input(object):
                         solubility = solubility, shale = self.shale)
                 t2grid.write_mesh(e_cel, two_d = self.two_d, uniform = self.uniform,\
                         boundary_type = self.edge_bc_type, shale = self.shale,\
-                        type1_source_cell = self.type1_source_cell)
+                        type1_source_cell = self.type1_source_cell,\
+                        isothermal = self.isothermal)
             else:
                 mesh_string = self.hydro_directory + '_dir/MESH'
                 call (["mv", mesh_string, './OLDMESH'])
@@ -355,47 +368,60 @@ def write_rocks(f, name, density, porosity, xperm, yperm, zperm, \
 
     # NOTE, the 2 that is hard-coded here means that two materials will be
     # read, if only one is used, change this value to 1
-    f.write(name + '    2')
-    if density < 10.e7:
-        d = '{: 10.0f}'.format(density)
-    else:
+    if name == 'cfbed':
+        f.write(name + '    0')
         d = '{: 10.1e}'.format(density)
-    p = '{: 10.2f}'.format(porosity)
-    xp = '{: 10.2e}'.format(xperm)
-    yp = '{: 10.2e}'.format(yperm)
-    zp = '{: 10.2e}'.format(zperm)
-    l = '{: 10.2f}'.format(thermk)
-    sph = '{: 10.2f}'.format(specheat)
-    f.write(d + p + xp + yp + zp + l + sph + '\r\n')
-
-    # compressibility = 0
-    f.write('   0.0e-10\r\n')
-
-    # Capillary pressure
-    cp_type = 7
-
-    # relative permeability
-    if rel_perm == 'vanGenuchten':
-        rp_type = 7
+        p = '{: 10.2f}'.format(porosity)
+        xp = '{: 10.2e}'.format(xperm)
+        yp = '{: 10.2e}'.format(yperm)
+        zp = '{: 10.2e}'.format(zperm)
+        l = '{: 10.2f}'.format(thermk)
+        sph = '{: 10.2f}'.format(specheat)
+        f.write(d + p + xp + yp + zp + l + sph + '\r\n')
+        f.write('\r\n')
     else:
-        rp_type = 1
+        f.write(name + '    2')
+        if density < 10.e7:
+            d = '{: 10.0f}'.format(density)
+        else:
+            d = '{: 10.1e}'.format(density)
+        p = '{: 10.2f}'.format(porosity)
+        xp = '{: 10.2e}'.format(xperm)
+        yp = '{: 10.2e}'.format(yperm)
+        zp = '{: 10.2e}'.format(zperm)
+        l = '{: 10.2f}'.format(thermk)
+        sph = '{: 10.2f}'.format(specheat)
+        f.write(d + p + xp + yp + zp + l + sph + '\r\n')
 
-    # write either form
-    rp_str = 4 * ' ' + str(rp_type) + 5 * ' '
-    s = ""
-    for el in rp_vals:
-        s += format_float_rocks(el)
-    f.write(rp_str + s + '\r\n')
-    cp_str = 4 * ' ' + str(cp_type) + 5 * ' '
-    sc = ""
-    for el in cp_vals:
-        sc += format_float_rocks(el)
-    f.write(cp_str + sc + '\r\n')
+        # compressibility = 0
+        f.write('   6.0e-10\r\n')
+
+        # Capillary pressure
+        cp_type = 7
+
+        # relative permeability
+        if rel_perm == 'vanGenuchten':
+            rp_type = 7
+        else:
+            rp_type = 1
+
+        # write either form
+        rp_str = 4 * ' ' + str(rp_type) + 5 * ' '
+        s = ""
+        for el in rp_vals:
+            s += format_float_rocks(el)
+        f.write(rp_str + s + '\r\n')
+        cp_str = 4 * ' ' + str(cp_type) + 5 * ' '
+        sc = ""
+        for el in cp_vals:
+            sc += format_float_rocks(el)
+        f.write(cp_str + sc + '\r\n')
 
     # break the rocks line
     if end == True:
         f.write('\r\n')
     return f
+
 def write_multi(f, isothermal = True):
     if isothermal == True:
         write_separator(f, 'MULTI')
@@ -419,9 +445,10 @@ def write_start(f):
     write_separator(f,'MOP')
     return f
 
-def write_param(f, pres = 110.5e5, salt = 3.2e-2, \
+def write_param(f, pres = 88.5e5, salt = 3.2e-2, \
         co2 = 0.0, temp = 32., maxtstep = 9500, max_cpu_seconds = 9999, \
-    tmax = 63.1152e6, tolexp = -5):
+        tmax = 63.1152e6, tolexp = -5,\
+        isothermal = True):
     """
         Writes the PARAM block of the input file
         Default parameters for an element (grid cell) if not specified in INCON
@@ -445,7 +472,10 @@ def write_param(f, pres = 110.5e5, salt = 3.2e-2, \
     # writes the MOP parameters, see the TOUGH2 manual for details
     # on what each of them are.
     #   MOP: 123456789*123456789*1234
-    f.write('1000 00000000  4    3   \r\n')
+    if isothermal == True:
+        f.write('1000 00000000  4    3   \r\n')
+    else:
+        f.write('1000 00000000 14    3   \r\n')
 
     # line 2
     f.write(10 * ' ')
@@ -959,7 +989,7 @@ class T2InputGrid(object):
 
                     if eleme == inj_cell:
                         self.mat[eleme] = 'sands'
-                        self.mat[eleme] = 'well '
+                        #self.mat[eleme] = 'well '
                         print "INJECTION cell"
                         print eleme
                     else:
@@ -1062,8 +1092,8 @@ class T2InputGrid(object):
         if e_cells[eclipse_index].getXPermeability() > 1 or two_d == True:
             self.mat[eleme] = 'sands'
         elif injector == True:
-            self.mat[eleme] = 'well '
-            #self.mat[eleme] = 'sands'
+            self.mat[eleme] = 'sands'
+            #self.mat[eleme] = 'well '
         else:
             self.mat[eleme] = 'shale'
 
@@ -1347,7 +1377,7 @@ class T2InputGrid(object):
 
     def write_mesh(self, e_cel, two_d = False, uniform = False,\
             boundary_type = 1, shale = True,\
-            type1_source_cell = 'none'):
+            type1_source_cell = 'none', isothermal = True):
         """ populates grid and writes ELEME block of MESH
         """
         g = open('MESH', 'w')
@@ -1400,6 +1430,9 @@ class T2InputGrid(object):
             g.write(el + 5 * ' ' + 5 * ' ' + mat + vw + aw + \
                 10 * ' ' + xw + yw + zw + '\r\n')
             count += 1 
+        
+        if isothermal == False:
+            g.write('con00' + 5 * ' ' + 5 * ' ' + 'cfbed' + '\r\n')
         g.write('\r\n')
 
         print "ELEME: " + str(count) + " elements"
