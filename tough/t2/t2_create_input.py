@@ -45,14 +45,20 @@ if __name__ == '__main__':
     # If no capillary pressure is desired, set the 4th parameter to 1.e1
     cp_vals = [0.4, 0.0, 1.61e-3, 1.e7, 0.999]
 
+    # initial dissolved CO2 fraction, if nonzero, minimizes dissolution
+    solubility = 0.454104e-3
+    #solubility = 0.0
+    temp = 42
+
     # If isothermal == True, the heat equation is not solved and 
     # the co2_enthalpy (specific enthalpy) is not called by TOUGH2
     isothermal = False
-    co2_enthalpy = 293.e3 #J/kg
-
-    solubility = 0.454104e-3
-    #solubility = 0.0
-    temp = 32
+    # TEMP [C] || Specific Enthalpy [J/kg]
+    #    32    ||          587.e3
+    #    37    ||          613.e3
+    #    42    ||          652.e3
+    #    47    ||          697.e3
+    co2_enthalpy = 613.e3 #J/kg
 
     # If True, ignores flow rate and fixes pressure and saturation
     # with an apparent CO2 saturation of sat_frac
@@ -62,7 +68,7 @@ if __name__ == '__main__':
     # specifies the number of output timesteps, and how many days are 
     # simulated in between each output.
     num_timesteps = 5
-    days_per_timestep = 5
+    days_per_timestep = 60.
 
     # rock parameters
     porosity = 0.35
