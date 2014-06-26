@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import t2_output_funcs as ot2f
 
-
 if __name__ == '__main__':
     print "PROCESSING TOUGH2 OUTPUT FOR " + str(sys.argv[1])
     if len(sys.argv) != 2:
@@ -12,7 +11,7 @@ if __name__ == '__main__':
     sim_title = sys.argv[1]
     # for hydrostatic simulations, prints the pressure difference as a function
     # of elevation
-    hydro = False
+    hydro = True
 
     # these three parameters should match those in t2_create_input.py
     two_d = False

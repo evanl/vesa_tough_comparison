@@ -138,7 +138,8 @@ class T2Input(object):
             self.type1_source_cell = injection_cell
         else:
             self.type1_source_cell = 'none'
-    def write_input_file(self, sleipner = False):
+    def write_input_file(self, sleipner = False, meshmaker = False,\
+            nx = 25, ny = 25, nz = 25):
         print 'CREATING TOUGH2 INPUT FILE'
 
 
@@ -174,16 +175,21 @@ class T2Input(object):
         # SAND
         name = 'sands'
         sand_density = 2600.
+        if meshmaker == True:
+            end = True
+        else:
+            end = False
         write_rocks(f, name, sand_density, self.porosity, xperm, yperm, zperm, \
             self.cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
-            rel_perm = rel_perm)
+            rel_perm = rel_perm, end = end)
 
         # injector cell to make the heat equation solve correctly
         name = 'well '
         sand_density = 2600.e40
-        write_rocks(f, name, sand_density, self.porosity, xperm, yperm, zperm, \
-            self.cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
-            rel_perm = rel_perm)
+        if meshmaker == False:
+            write_rocks(f, name, sand_density, self.porosity, xperm, yperm, zperm, \
+                self.cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
+                rel_perm = rel_perm)
 
         # SHALE 
         name = 'shale'
@@ -192,9 +198,10 @@ class T2Input(object):
         xperm = 1.e-18
         yperm = 1.e-18
         zperm = 1.e-18
-        write_rocks(f, name, shale_density, shale_porosity, xperm, yperm, zperm, \
-            self.cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
-            rel_perm = rel_perm)
+        if meshmaker == False:
+            write_rocks(f, name, shale_density, shale_porosity, xperm, yperm, zperm, \
+                self.cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
+                rel_perm = rel_perm)
 
         # confining beds
         name = 'cfbed'
@@ -202,11 +209,12 @@ class T2Input(object):
         bed_porosity = 0.0
         bed_perm = 0.0
         # confining bed for heat exchange
-        write_rocks(f, name, bed_density, bed_porosity, \
-            bed_perm, bed_perm, bed_perm, \
-            self.cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
-            rel_perm = rel_perm,\
-            end = True)
+        if meshmaker == False:
+            write_rocks(f, name, bed_density, bed_porosity, \
+                bed_perm, bed_perm, bed_perm, \
+                self.cp_vals, rp_vals, thermk = 2.51, specheat = 920., \
+                rel_perm = rel_perm,\
+                end = True)
 
         write_multi(f, isothermal = self.isothermal)
         write_selec(f)
@@ -229,10 +237,12 @@ class T2Input(object):
                     co2_enthalpy = self.co2_enthalpy, \
                     isothermal = self.isothermal)
         else:
-            write_gener(f, self.injection_cell, phase = self.phase, \
-                    mass_rate = self.mass_rate, \
-                    co2_enthalpy = self.co2_enthalpy, \
-                    isothermal = self.isothermal)
+            print '1'
+            #write_gener(f, self.injection_cell, phase = self.phase, \
+                    #mass_rate = self.mass_rate, \
+                    #co2_enthalpy = self.co2_enthalpy, \
+                    #isothermal = self.isothermal)
+
                     #, kg_inflow = kgInflow, times = output_day_list )
 
         write_times(f, output_day_list)
@@ -240,6 +250,9 @@ class T2Input(object):
         write_coft(f, sleipner)
         write_goft(f)
         write_separator(f, 'ENDCY')
+        if meshmaker == True:
+            write_meshmaker(f, nx = nx, ny = ny, nz = nz)
+        write_separator(f, 'ENDFI')
         f.close()
 
         print "write_input_file COMPLETE"
@@ -475,7 +488,8 @@ def write_param(f, pres = 88.5e5, salt = 3.2e-2, \
     if isothermal == True:
         f.write('1000 00000000  4    3   \r\n')
     else:
-        f.write('1000 00000000 14    3   \r\n')
+        #f.write('1000 00000000 14    3   \r\n')
+        f.write('1000 00000000  4    3   \r\n')
 
     # line 2
     f.write(10 * ' ')
@@ -673,8 +687,9 @@ def write_coft(f, sleipner):
         #f.write('bH732cH732\r\n')
         dummy =1
     else:
+        dummy =1
         #f.write('aB212bB212\r\n')
-        f.write('xB212yB212\r\n')
+        #f.write('xB212yB212\r\n')
     f.write('\r\n')
     return f
 
@@ -686,7 +701,7 @@ def write_goft(f):
     f.write('\r\n')
     return f
 
-def write_meshmaker(f , rect = True, flat = True, nx = 65, ny = 119, nz = 1):
+def write_meshmaker(f , rect = True, flat = False, nx = 65, ny = 119, nz = 1):
     """
         uses internal MESHMAKER routine.
     """
@@ -713,17 +728,18 @@ def write_meshmaker(f , rect = True, flat = True, nx = 65, ny = 119, nz = 1):
             f.write('\r\n')
     f.write('\r\n')
     if flat == True:
-        f.write('NZ       1      28.0\r\n') 
+        f.write('NZ       1      25.\r\n') 
     else:
         f.write('NZ     '+ str(nz) + '\r\n')
         count = 0
         for i in range(nz):
-            f.write('       50.')
+            f.write('       0.6')
             count +=1
             if count % 8 == 0:
                 f.write('\r\n')
 
     f.write('\r\n')
+    f.write('\r\n') 
     f.write('\r\n') 
     return f
 
@@ -981,6 +997,7 @@ class T2InputGrid(object):
                     # this thermal contact area was specified based on the 
                     # MESHMAKER routine in ECO2N
                     self.ahtx[eleme] = (dz * dy * dx) / 50.
+                    self.ahtx[eleme] = (dz * dy * dx) * 0.5
                     self.pres[eleme] = -zlocal * density * 10.0
                     self.na_cl[eleme] = 3.2e-2
                     self.x_co2[eleme] = solubility_limit

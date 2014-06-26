@@ -23,7 +23,7 @@ if __name__ == '__main__':
     # dissolved fractions will be taken from the 'hydro_directory' + '_dir/'.
     # in order to run a particular grid to hydrostatic equilibrium, 
     # specify hydro = True and use num_timesteps = 1 and days_per_timestep = 30
-    hydro = False
+    hydro = True
 
     # if True, a uniform rectangular grid is generated.
     uniform = True
@@ -52,13 +52,13 @@ if __name__ == '__main__':
 
     # If isothermal == True, the heat equation is not solved and 
     # the co2_enthalpy (specific enthalpy) is not called by TOUGH2
-    isothermal = False
+    isothermal = True
     # TEMP [C] || Specific Enthalpy [J/kg]
     #    32    ||          587.e3
     #    37    ||          613.e3
     #    42    ||          652.e3
     #    47    ||          697.e3
-    co2_enthalpy = 613.e3 #J/kg
+    co2_enthalpy = 612.e3 #J/kg
 
     # If True, ignores flow rate and fixes pressure and saturation
     # with an apparent CO2 saturation of sat_frac
@@ -68,7 +68,7 @@ if __name__ == '__main__':
     # specifies the number of output timesteps, and how many days are 
     # simulated in between each output.
     num_timesteps = 5
-    days_per_timestep = 60.
+    days_per_timestep = 10.
 
     # rock parameters
     porosity = 0.35
@@ -140,11 +140,15 @@ if __name__ == '__main__':
     t2grid = it2f.T2InputGrid(nx, ny, nz)
 
     # create and write the mesh file or use an old one
-    t2input.write_mesh_file(t2grid, dx = dx, dy = dy, dz = dz, temp = temp,\
-            solubility = solubility)
-    t2input.write_incon(t2grid)
+    
+    meshmaker = True
+    if meshmaker == False:
+        t2input.write_mesh_file(t2grid, dx = dx, dy = dy, dz = dz, temp = temp,\
+                solubility = solubility)
+        t2input.write_incon(t2grid)
 
-    t2input.write_input_file(sleipner = sleipner)
+    t2input.write_input_file(sleipner = sleipner, meshmaker = meshmaker, \
+            nx = nx, ny = ny, nz = nz)
 
     if hydro == True:
         t2grid.plot_cells(show = False, two_d = two_d)
