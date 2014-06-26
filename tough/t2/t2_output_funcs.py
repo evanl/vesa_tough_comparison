@@ -468,6 +468,7 @@ class T2Timestep(object):
             For a given output timestep, reads the block of data dedicated to 
             mass balance information.
         """
+        print "reading balance block"
         line = f.readline()
         s = line.split()
         # read through lines until 'VOL.' is hit, get 
@@ -475,6 +476,7 @@ class T2Timestep(object):
         # VOL. (m^3) * 0.00000000E+00 0.62971493E+07 0.00000000E+00 \
         # GAS PHASE  * 0.16497908E+06 0.00000000E+00 0.11330593E+09 0.65583271E+14
         while s == [] or s[0]!= 'VOL.':
+            print "balance read 1"
             line = f.readline()
             s = line.split()
         self.gas_mass_water = float(s[9])
@@ -496,6 +498,7 @@ class T2Timestep(object):
         # Makes sure to not double read sand/system balances
         if double_read == True:
             while s == [] or s[0]!= 'VOL.':
+                print "balance read 2"
                 line = f.readline()
                 s = line.split()
         return f

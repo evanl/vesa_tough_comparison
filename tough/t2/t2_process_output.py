@@ -11,7 +11,7 @@ if __name__ == '__main__':
     sim_title = sys.argv[1]
     # for hydrostatic simulations, prints the pressure difference as a function
     # of elevation
-    hydro = True
+    hydro = False
 
     # these three parameters should match those in t2_create_input.py
     two_d = False

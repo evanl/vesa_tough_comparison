@@ -23,7 +23,7 @@ if __name__ == '__main__':
     # dissolved fractions will be taken from the 'hydro_directory' + '_dir/'.
     # in order to run a particular grid to hydrostatic equilibrium, 
     # specify hydro = True and use num_timesteps = 1 and days_per_timestep = 30
-    hydro = True
+    hydro = False
 
     # if True, a uniform rectangular grid is generated.
     uniform = True
@@ -52,7 +52,7 @@ if __name__ == '__main__':
 
     # If isothermal == True, the heat equation is not solved and 
     # the co2_enthalpy (specific enthalpy) is not called by TOUGH2
-    isothermal = True
+    isothermal = False
     # TEMP [C] || Specific Enthalpy [J/kg]
     #    32    ||          587.e3
     #    37    ||          613.e3
@@ -68,7 +68,7 @@ if __name__ == '__main__':
     # specifies the number of output timesteps, and how many days are 
     # simulated in between each output.
     num_timesteps = 5
-    days_per_timestep = 10.
+    days_per_timestep = 60.
 
     # rock parameters
     porosity = 0.35
@@ -141,7 +141,7 @@ if __name__ == '__main__':
 
     # create and write the mesh file or use an old one
     
-    meshmaker = True
+    meshmaker = False
     if meshmaker == False:
         t2input.write_mesh_file(t2grid, dx = dx, dy = dy, dz = dz, temp = temp,\
                 solubility = solubility)
